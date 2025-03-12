@@ -1,0 +1,9 @@
+{
+  "mode": "client",
+  "client": {
+    "serverUrl": "http://localhost:3000",
+    "bearerToken": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "mcpCommand": "node",
+    "mcpArgs": ["./path/to/mcp-server.js"]
+  }
+} 
