@@ -337,6 +337,18 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
         } else if (key === 'items' && typeof value === 'object' && value !== null) {
           // Special handling for items property in array types
           result[key] = this.sanitizeSchema(value);
+        } else if (key === 'enum' && typeof value === 'object' && value !== null) {
+          // Fix for Issue #1: Handle enumerations properly
+          if (Array.isArray(value)) {
+            result[key] = value;
+          } else {
+            // Convert object enum (like {'0': 'value1', '1': 'value2'}) to array enum
+            result[key] = Object.values(value);
+          }
+        } else if (key === 'additionalProperties' && value === false) {
+          // Fix for Issue #2: Handle additionalProperties: false correctly for OpenAPI 3.1
+          // Either remove it or set it to an empty object
+          result[key] = {};
         } else if (typeof value === 'object' && value !== null) {
           result[key] = this.sanitizeSchema(value);
         } else {
