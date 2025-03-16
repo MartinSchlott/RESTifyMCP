@@ -3,7 +3,9 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import { ConsoleLogger, LogLevel, RESTifyMCPError } from '../shared/utils.js';
-import { ClientRegistration } from '../shared/types.js';
+import { APISpace, ClientRegistration } from '../shared/types.js';
+import { APISpaceManager } from './api-space-manager.js';
+import crypto from 'crypto';
 
 // Set up logger
 const logger = new ConsoleLogger('AuthService', LogLevel.INFO);
@@ -15,25 +17,76 @@ export interface AuthService {
   validateBearerToken(token: string): boolean;
   getClientIdFromToken(token: string): string | null;
   authenticateRequest(req: Request, res: Response, next: NextFunction): void;
+  getRequestAPISpace(req: Request): APISpace | null;
+  getValidClientTokensForRequest(req: Request): string[];
+  validateAdminToken(token: string): boolean;
+  getTokenHash(token: string): string;
+  getAPISpaceByTokenHash(hash: string): APISpace | null;
 }
 
 /**
  * Default implementation of authentication service
  */
 export class BearerAuthService implements AuthService {
-  private readonly serverTokens: string[];
+  private readonly apiSpaceManager: APISpaceManager;
   private readonly clientRegistrations: Map<string, ClientRegistration>;
+  private readonly adminToken: string | null;
+  private readonly tokenHashes: Map<string, string> = new Map(); // hash -> token
 
   /**
    * Create a new BearerAuthService
-   * @param serverTokens The server's own Bearer tokens
+   * @param apiSpaceManager The API Space manager
    * @param clientRegistrations Map of client registrations
+   * @param adminToken Optional admin token
    */
-  constructor(serverTokens: string[] | string, clientRegistrations: Map<string, ClientRegistration>) {
-    // Handle both string and array for backward compatibility
-    this.serverTokens = Array.isArray(serverTokens) ? serverTokens : [serverTokens];
+  constructor(
+    apiSpaceManager: APISpaceManager,
+    clientRegistrations: Map<string, ClientRegistration>,
+    adminToken: string | null = null
+  ) {
+    this.apiSpaceManager = apiSpaceManager;
     this.clientRegistrations = clientRegistrations;
+    this.adminToken = adminToken;
+    
+    // Generate token hashes for all API Spaces
+    this.generateTokenHashes();
+    
     logger.info('BearerAuthService initialized');
+  }
+
+  /**
+   * Generate secure hashes for all API Space tokens
+   */
+  private generateTokenHashes(): void {
+    // Clear existing hashes
+    this.tokenHashes.clear();
+    
+    // Generate hashes for all API Space tokens
+    for (const token of this.apiSpaceManager.getAllSpaceTokens()) {
+      const hash = this.getTokenHash(token);
+      this.tokenHashes.set(hash, token);
+    }
+    
+    logger.info(`Generated token hashes for ${this.tokenHashes.size} API Spaces`);
+  }
+
+  /**
+   * Generate a secure hash for a token
+   */
+  getTokenHash(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  /**
+   * Get API Space by token hash
+   */
+  getAPISpaceByTokenHash(hash: string): APISpace | null {
+    const token = this.tokenHashes.get(hash);
+    if (!token) {
+      return null;
+    }
+    
+    return this.apiSpaceManager.getSpaceByToken(token);
   }
 
   /**
@@ -42,8 +95,8 @@ export class BearerAuthService implements AuthService {
    * @returns true if token is valid, false otherwise
    */
   validateBearerToken(token: string): boolean {
-    // Check if token matches any server token
-    if (this.serverTokens.includes(token)) {
+    // Check if token matches any API Space token
+    if (this.apiSpaceManager.getSpaceByToken(token)) {
       return true;
     }
 
@@ -53,8 +106,20 @@ export class BearerAuthService implements AuthService {
         return true;
       }
     }
+    
+    // Check if token matches admin token
+    if (this.adminToken && token === this.adminToken) {
+      return true;
+    }
 
     return false;
+  }
+  
+  /**
+   * Validate if a token is a valid admin token
+   */
+  validateAdminToken(token: string): boolean {
+    return !!this.adminToken && token === this.adminToken;
   }
 
   /**
@@ -71,6 +136,34 @@ export class BearerAuthService implements AuthService {
     }
 
     return null;
+  }
+
+  /**
+   * Get the API Space associated with a request
+   * @param req Express request
+   * @returns API Space if found, null otherwise
+   */
+  getRequestAPISpace(req: Request): APISpace | null {
+    const token = (req as any).bearerToken;
+    if (!token) {
+      return null;
+    }
+    
+    return this.apiSpaceManager.getSpaceByToken(token);
+  }
+
+  /**
+   * Get valid client tokens for a request
+   * @param req Express request
+   * @returns Array of valid client tokens for the request's API Space
+   */
+  getValidClientTokensForRequest(req: Request): string[] {
+    const apiSpace = this.getRequestAPISpace(req);
+    if (!apiSpace) {
+      return [];
+    }
+    
+    return this.apiSpaceManager.getClientTokensForSpace(apiSpace.name);
   }
 
   /**

@@ -9,10 +9,13 @@ import { dump as yamlDump } from 'js-yaml';
 import { AuthService } from './auth.js';
 import { OpenApiGenerator } from './openapi-generator.js';
 import { ConsoleLogger, LogLevel, RESTifyMCPError, generateId } from '../shared/utils.js';
-import { ClientRegistration, ToolRequest, ToolResponse } from '../shared/types.js';
+import { ClientRegistration, ToolRequest, ToolResponse, APISpace } from '../shared/types.js';
+import { APISpaceManager } from './api-space-manager.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { AdminService } from './admin-service.js';
+import cookieParser from 'cookie-parser';
 
 // Set up logger
 const logger = new ConsoleLogger('RESTApiService', LogLevel.INFO);
@@ -37,6 +40,8 @@ export interface RESTApiService {
   getOpenApiSpec(): Record<string, any>;
   start(): Promise<void>;
   stop(): Promise<void>;
+  getHttpServer(): Server | null;
+  subscribeToConnectionEvents(wsServer: any): void;
 }
 
 /**
@@ -50,6 +55,8 @@ export class ExpressRESTApiService implements RESTApiService {
   private readonly authService: AuthService;
   private readonly openApiGenerator: OpenApiGenerator;
   private readonly toolInvoker: ToolInvoker;
+  private readonly apiSpaceManager: APISpaceManager;
+  private readonly adminService: AdminService;
   private server: any | null = null;
   private _clientCleanupInterval: NodeJS.Timeout | null = null;
 
@@ -68,7 +75,9 @@ export class ExpressRESTApiService implements RESTApiService {
     clientRegistrations: Map<string, ClientRegistration>,
     authService: AuthService,
     openApiGenerator: OpenApiGenerator,
-    toolInvoker: ToolInvoker
+    toolInvoker: ToolInvoker,
+    apiSpaceManager: APISpaceManager,
+    adminService: AdminService
   ) {
     this.app = express();
     this.port = port;
@@ -77,6 +86,8 @@ export class ExpressRESTApiService implements RESTApiService {
     this.authService = authService;
     this.openApiGenerator = openApiGenerator;
     this.toolInvoker = toolInvoker;
+    this.apiSpaceManager = apiSpaceManager;
+    this.adminService = adminService;
     
     // Set up ConsoleLogger to forward logs to SSE
     ConsoleLogger.setLogHandler((level, component, message) => {
@@ -98,18 +109,40 @@ export class ExpressRESTApiService implements RESTApiService {
   setupRoutes(): void {
     logger.info('Setting up Express routes');
 
-    // Body parser for JSON
+    // Body parser for JSON and cookies
     this.app.use(express.json());
+    this.app.use(express.urlencoded({ extended: true }));
+    this.app.use(cookieParser());
 
-    // Individual route handlers
-    // OpenAPI specification in JSON format
-    this.app.get('/openapi.json', (req: Request, res: Response) => {
-      res.json(this.getOpenApiSpec());
+    // Admin routes
+    this.setupAdminRoutes();
+
+    // OpenAPI specification in JSON format for specific API Space
+    this.app.get('/openapi/:tokenHash.json', (req: Request, res: Response) => {
+      const tokenHash = req.params.tokenHash;
+      const apiSpace = this.adminService.getAPISpaceByTokenHash(tokenHash);
+      if (!apiSpace) {
+        res.status(404).json({
+          error: 'API Space not found',
+          code: 'API_SPACE_NOT_FOUND'
+        });
+        return;
+      }
+      res.json(this.getOpenApiSpecForSpace(apiSpace));
     });
 
-    // OpenAPI specification in YAML format
-    this.app.get('/openapi.yaml', (req: Request, res: Response) => {
-      res.type('text/yaml').send(yamlDump(this.getOpenApiSpec()));
+    // OpenAPI specification in YAML format for specific API Space
+    this.app.get('/openapi/:tokenHash.yaml', (req: Request, res: Response) => {
+      const tokenHash = req.params.tokenHash;
+      const apiSpace = this.adminService.getAPISpaceByTokenHash(tokenHash);
+      if (!apiSpace) {
+        res.status(404).json({
+          error: 'API Space not found',
+          code: 'API_SPACE_NOT_FOUND'
+        });
+        return;
+      }
+      res.type('text/yaml').send(yamlDump(this.getOpenApiSpecForSpace(apiSpace)));
     });
 
     // Info dashboard page
@@ -200,9 +233,9 @@ export class ExpressRESTApiService implements RESTApiService {
       });
     });
 
-    // Tool invocation endpoint
+    // Tool invocation endpoint with API Space support
     this.app.post(
-      '/api/tools/:toolName',
+      '/api/:spaceToken/tools/:toolName',
       (req: Request, res: Response, next: NextFunction) => this.authService.authenticateRequest(req, res, next),
       async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -249,23 +282,155 @@ export class ExpressRESTApiService implements RESTApiService {
   }
 
   /**
+   * Set up admin routes
+   */
+  private setupAdminRoutes(): void {
+    // Login page
+    this.app.get('/admin/login', (req: Request, res: Response) => {
+      if (this.adminService.validateSession(req)) {
+        res.redirect('/admin');
+        return;
+      }
+
+      try {
+        const templatePath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'static', 'login.html');
+        let html = fs.readFileSync(templatePath, 'utf8');
+        res.send(html);
+      } catch (error) {
+        logger.error(`Error reading login template: ${(error as Error).message}`);
+        res.status(500).send('Error loading login page');
+      }
+    });
+
+    // Login handler
+    this.app.post('/admin/login', (req: Request, res: Response) => {
+      const { adminToken } = req.body;
+      
+      if (this.adminService.validateAdminToken(adminToken)) {
+        this.adminService.createSession(res);
+        res.redirect('/admin');
+      } else {
+        try {
+          const templatePath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'static', 'login.html');
+          let html = fs.readFileSync(templatePath, 'utf8');
+          html = html.replace('{{error}}', 'Invalid admin token');
+          res.send(html);
+        } catch (error) {
+          logger.error(`Error reading login template: ${(error as Error).message}`);
+          res.status(500).send('Error loading login page');
+        }
+      }
+    });
+
+    // Logout handler
+    this.app.get('/admin/logout', (req: Request, res: Response) => {
+      res.clearCookie('adminSession');
+      res.redirect('/admin/login');
+    });
+
+    // Admin dashboard
+    this.app.get('/admin', 
+      (req: Request, res: Response, next: NextFunction) => this.adminService.requireAuth(req, res, next),
+      async (req: Request, res: Response) => {
+        try {
+          const templatePath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'static', 'admin-dashboard.html');
+          let html = fs.readFileSync(templatePath, 'utf8');
+          
+          // Get dashboard data
+          const data = await this.adminService.generateDashboardData();
+          
+          // Replace placeholders with data
+          html = html
+            .replace('{{apiSpacesCount}}', data.apiSpacesCount.toString())
+            .replace('{{connectedClientsCount}}', data.connectedClientsCount.toString())
+            .replace('{{totalToolsCount}}', data.totalToolsCount.toString())
+            .replace('{{uptime}}', data.uptime);
+          
+          // Generate API Spaces HTML
+          let apiSpacesHtml = '';
+          for (const space of data.apiSpaces) {
+            apiSpacesHtml += `
+              <div class="api-space-card">
+                <h3>${space.name}</h3>
+                <p>${space.description}</p>
+                <div class="stats">
+                  <div class="stat">
+                    <span>Clients</span>
+                    <strong>${space.clientCount}</strong>
+                  </div>
+                  <div class="stat">
+                    <span>Tools</span>
+                    <strong>${space.toolCount}</strong>
+                  </div>
+                </div>
+                <div>
+                  <a href="/openapi/${space.tokenHash}/json" class="button button-outline" target="_blank">OpenAPI (JSON)</a>
+                  <a href="/openapi/${space.tokenHash}/yaml" class="button button-outline" target="_blank">OpenAPI (YAML)</a>
+                </div>
+                <div class="client-list">
+                  ${space.clients.map((client: { id: string; connectionStatus: string; toolCount: number }) => `
+                    <div class="client-item">
+                      <span class="status ${client.connectionStatus}"></span>
+                      ${client.id} (${client.toolCount} tools)
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `;
+          }
+          
+          html = html.replace('{{apiSpaces}}', apiSpacesHtml);
+          
+          res.send(html);
+        } catch (error) {
+          logger.error(`Error generating admin dashboard: ${(error as Error).message}`);
+          res.status(500).send('Error loading admin dashboard');
+        }
+    });
+
+    // Admin API endpoints
+    this.app.get('/api/admin/stats',
+      (req: Request, res: Response, next: NextFunction) => this.adminService.requireAuth(req, res, next),
+      async (req: Request, res: Response) => {
+        try {
+          const data = await this.adminService.generateDashboardData();
+          res.json(data);
+        } catch (error) {
+          logger.error(`Error generating admin stats: ${(error as Error).message}`);
+          res.status(500).json({ error: 'Failed to generate stats' });
+        }
+    });
+  }
+
+  /**
    * Handle a tool invocation request
    * @param req Express request
    * @param res Express response
    */
   async handleToolRequest(req: Request, res: Response): Promise<void> {
     const toolName = req.params.toolName;
+    const spaceToken = req.params.spaceToken;
     const bearerToken = (req as any).bearerToken;
     
     try {
-      logger.info(`Tool request received for ${toolName}`);
+      logger.info(`Tool request received for ${toolName} in API Space ${spaceToken}`);
       
-      // Find the client that has this tool
-      const clientId = await this.findClientForTool(toolName, bearerToken);
-      if (!clientId) {
-        logger.warn(`No client found for tool ${toolName}`);
+      // Verify API Space exists
+      const apiSpace = this.apiSpaceManager.getSpaceByToken(spaceToken);
+      if (!apiSpace) {
         res.status(404).json({
-          error: `Tool ${toolName} not found`,
+          error: 'API Space not found',
+          code: 'API_SPACE_NOT_FOUND'
+        });
+        return;
+      }
+      
+      // Find the client that has this tool and is allowed in this API Space
+      const clientId = await this.findClientForTool(toolName, bearerToken, apiSpace);
+      if (!clientId) {
+        logger.warn(`No client found for tool ${toolName} in API Space ${apiSpace.name}`);
+        res.status(404).json({
+          error: `Tool ${toolName} not found in API Space ${apiSpace.name}`,
           code: 'TOOL_NOT_FOUND'
         });
         return;
@@ -299,6 +464,21 @@ export class ExpressRESTApiService implements RESTApiService {
         });
       }
     }
+  }
+
+  /**
+   * Get the OpenAPI specification for a specific API Space
+   */
+  private getOpenApiSpecForSpace(apiSpace: APISpace): Record<string, any> {
+    // Filter client registrations to only include clients allowed in this API Space
+    const filteredRegistrations = new Map<string, ClientRegistration>();
+    for (const [clientId, registration] of this.clientRegistrations.entries()) {
+      if (this.apiSpaceManager.isClientAllowedInSpace(clientId, apiSpace.name)) {
+        filteredRegistrations.set(clientId, registration);
+      }
+    }
+    
+    return this.openApiGenerator.generateSpec(filteredRegistrations, apiSpace);
   }
 
   /**
@@ -385,18 +565,24 @@ export class ExpressRESTApiService implements RESTApiService {
   }
 
   /**
-   * Find a client that provides a specific tool
-   * @param toolName Name of the tool
-   * @param bearerToken Bearer token
-   * @returns Client ID if found, null otherwise
+   * Find a client that provides a specific tool in an API Space
    */
-  private async findClientForTool(toolName: string, bearerToken: string): Promise<string | null> {
-    // Find all clients that have this tool
+  private async findClientForTool(
+    toolName: string,
+    bearerToken: string,
+    apiSpace: APISpace
+  ): Promise<string | null> {
+    // Find all clients that have this tool and are allowed in the API Space
     const matchingClients: string[] = [];
     
     for (const [clientId, client] of this.clientRegistrations.entries()) {
       // Skip disconnected clients
       if (client.connectionStatus !== 'connected') {
+        continue;
+      }
+      
+      // Skip clients not allowed in this API Space
+      if (!this.apiSpaceManager.isClientAllowedInSpace(clientId, apiSpace.name)) {
         continue;
       }
       
@@ -588,5 +774,30 @@ export class ExpressRESTApiService implements RESTApiService {
         logger.info(`Cleaned up ${cleanedCount} disconnected clients`);
       }
     }, CLEANUP_INTERVAL_MS);
+  }
+
+  /**
+   * Subscribe to WebSocket connection events
+   */
+  subscribeToConnectionEvents(wsServer: any): void {
+    wsServer.on('clientConnected', (clientId: string) => {
+      logger.info(`Client ${clientId} connected`);
+      // Update client registration status
+      const client = this.clientRegistrations.get(clientId);
+      if (client) {
+        client.connectionStatus = 'connected';
+        client.lastSeen = new Date();
+      }
+    });
+
+    wsServer.on('clientDisconnected', (clientId: string) => {
+      logger.info(`Client ${clientId} disconnected`);
+      // Update client registration status
+      const client = this.clientRegistrations.get(clientId);
+      if (client) {
+        client.connectionStatus = 'disconnected';
+        client.lastSeen = new Date();
+      }
+    });
   }
 } 

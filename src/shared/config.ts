@@ -10,6 +10,25 @@ import { ConsoleLogger, RESTifyMCPError } from './utils.js';
 // Create a logger
 const logger = new ConsoleLogger('ConfigService');
 
+// Zod schema for API Space
+const apiSpaceSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  bearerToken: z.string().min(32),
+  allowedClientTokens: z.array(z.string().min(32)).min(1)
+});
+
+// Zod schema for admin configuration
+const adminConfigSchema = z.object({
+  adminToken: z.string().min(32)
+}).optional();
+
+// Zod schema for logging configuration
+const loggingConfigSchema = z.object({
+  level: z.enum(['debug', 'info', 'warn', 'error']).optional(),
+  format: z.enum(['text', 'json']).optional()
+}).optional();
+
 // Zod schema for server configuration
 const serverConfigSchema = z.object({
   http: z.object({
@@ -17,9 +36,9 @@ const serverConfigSchema = z.object({
     host: z.string().default('localhost'),
     publicUrl: z.string().optional()
   }),
-  auth: z.object({
-    bearerTokens: z.array(z.string().min(32)).min(1)
-  })
+  apiSpaces: z.array(apiSpaceSchema).min(1),
+  admin: adminConfigSchema,
+  logging: loggingConfigSchema
 });
 
 // Zod schema for client configuration
@@ -131,11 +150,26 @@ export class FileConfigService implements ConfigService {
         delete serverConfig.host;
       }
       
-      // Convert single bearerToken to array
+      // Convert auth.bearerTokens to apiSpaces
+      if (serverConfig.auth && serverConfig.auth.bearerTokens && Array.isArray(serverConfig.auth.bearerTokens)) {
+        // Create a default API Space with all tokens
+        serverConfig.apiSpaces = [{
+          name: 'default',
+          description: 'Default API Space (auto-created from legacy config)',
+          bearerToken: serverConfig.auth.bearerTokens[0],
+          allowedClientTokens: [...serverConfig.auth.bearerTokens]
+        }];
+        delete serverConfig.auth;
+      }
+      
+      // Convert single bearerToken to apiSpaces
       if ('bearerToken' in serverConfig) {
-        serverConfig.auth = {
-          bearerTokens: [serverConfig.bearerToken]
-        };
+        serverConfig.apiSpaces = [{
+          name: 'default',
+          description: 'Default API Space (auto-created from legacy config)',
+          bearerToken: serverConfig.bearerToken,
+          allowedClientTokens: [serverConfig.bearerToken]
+        }];
         delete serverConfig.bearerToken;
       }
       

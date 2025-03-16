@@ -34,6 +34,32 @@ export interface ValidatedConfig {
 }
 
 /**
+ * API Space Interface
+ * Represents an isolated API namespace with its own authentication
+ */
+export interface APISpace {
+  // Unique name for the API Space
+  name: string;
+  
+  // Optional description
+  description?: string;
+  
+  // Bearer token for accessing this API Space
+  bearerToken: string;
+  
+  // List of client tokens allowed in this space
+  allowedClientTokens: string[];
+}
+
+/**
+ * Admin Configuration
+ */
+export interface AdminConfig {
+  // Admin token for accessing the dashboard
+  adminToken: string;
+}
+
+/**
  * Server Configuration
  */
 export interface ServerConfig {
@@ -42,8 +68,17 @@ export interface ServerConfig {
     host: string;
     publicUrl?: string;
   };
-  auth: {
-    bearerTokens: string[];
+  
+  // API Spaces replace the simple bearerTokens array
+  apiSpaces: APISpace[];
+  
+  // Admin configuration
+  admin?: AdminConfig;
+  
+  // Optional logging configuration
+  logging?: {
+    level?: 'debug' | 'info' | 'warn' | 'error';
+    format?: 'text' | 'json';
   };
 }
 

@@ -10,6 +10,12 @@ import { BearerAuthService } from './auth.js';
 import { DefaultOpenApiGenerator } from './openapi-generator.js';
 import { ExpressRESTApiService } from './rest-api.js';
 import { WSServer } from './websocket-server.js';
+import { DefaultAPISpaceManager, APISpaceManager } from './api-space-manager.js';
+import { DefaultAdminService, AdminService, AdminServiceConfig } from './admin-service.js';
+import { ServerConfig } from '../shared/types.js';
+import { AuthService } from './auth.js';
+import { OpenApiGenerator } from './openapi-generator.js';
+import { RESTApiService } from './rest-api.js';
 
 // Set up logger
 const logger = new ConsoleLogger('Server', LogLevel.INFO);
@@ -17,21 +23,73 @@ const logger = new ConsoleLogger('Server', LogLevel.INFO);
 /**
  * RESTifyServer class
  */
-export default class RESTifyServer {
-  private readonly config: ValidatedConfig;
+export class RESTifyServer {
+  private readonly config: ValidatedConfig & { server: ServerConfig };
   private readonly clientRegistrations: Map<string, ClientRegistration>;
-  private authService: BearerAuthService | null = null;
-  private openApiGenerator: DefaultOpenApiGenerator | null = null;
-  private wsServer: WSServer | null = null;
-  private restApiService: ExpressRESTApiService | null = null;
+  private readonly apiSpaceManager: APISpaceManager;
+  private readonly authService: AuthService;
+  private readonly openApiGenerator: OpenApiGenerator;
+  private readonly adminService: AdminService;
+  private readonly wsServer: WSServer;
+  private readonly restApiService: RESTApiService;
   
   /**
    * Create a new RESTifyServer instance
    * @param config Validated configuration
    */
-  constructor(config: ValidatedConfig) {
+  constructor(config: ValidatedConfig & { server: ServerConfig }) {
     this.config = config;
-    this.clientRegistrations = new Map<string, ClientRegistration>();
+    this.clientRegistrations = new Map();
+
+    // Initialize API Space Manager
+    this.apiSpaceManager = new DefaultAPISpaceManager(config.server.apiSpaces);
+
+    // Initialize Auth Service
+    this.authService = new BearerAuthService(
+      this.apiSpaceManager,
+      this.clientRegistrations
+    );
+
+    // Initialize OpenAPI Generator
+    this.openApiGenerator = new DefaultOpenApiGenerator(
+      `http://${config.server.http.host}:${config.server.http.port}`,
+      'RESTifyMCP API',
+      '2.0.0'
+    );
+
+    // Initialize WebSocket Server with the first API Space token for client authentication
+    const clientAuthToken = config.server.apiSpaces[0].bearerToken;
+    this.wsServer = new WSServer(
+      clientAuthToken,
+      this.clientRegistrations,
+      this.authService
+    );
+
+    // Initialize Admin Service
+    const adminConfig: AdminServiceConfig = {
+      adminToken: config.server.admin?.adminToken ?? generateRandomToken(32)
+    };
+    this.adminService = new DefaultAdminService(
+      adminConfig,
+      this.apiSpaceManager,
+      this.clientRegistrations
+    );
+
+    // Initialize REST API service
+    this.restApiService = new ExpressRESTApiService(
+      this.config.server.http.port,
+      this.config.server.http.host,
+      this.clientRegistrations,
+      this.authService,
+      this.openApiGenerator,
+      this.wsServer,
+      this.apiSpaceManager,
+      this.adminService
+    );
+
+    // Subscribe to WebSocket connection events
+    this.restApiService.subscribeToConnectionEvents(this.wsServer);
+
     logger.info('RESTifyServer created');
   }
   
@@ -47,37 +105,10 @@ export default class RESTifyServer {
         throw new RESTifyMCPError('Server configuration required', 'CONFIG_ERROR');
       }
       
-      // Ensure bearer tokens are configured
-      if (!this.config.server.auth.bearerTokens || this.config.server.auth.bearerTokens.length === 0) {
-        throw new RESTifyMCPError('At least one bearer token must be defined in server configuration', 'MISSING_TOKEN');
+      // Ensure API Spaces are configured
+      if (!this.config.server.apiSpaces || this.config.server.apiSpaces.length === 0) {
+        throw new RESTifyMCPError('At least one API Space must be defined in server configuration', 'MISSING_API_SPACE');
       }
-      
-      // Create WebSocket server with the token but without port/host
-      this.wsServer = new WSServer(
-        this.config.server.auth.bearerTokens[0], // Use the first token for now
-        this.clientRegistrations // Pass the shared client registrations map
-      );
-      
-      // Initialize authentication service
-      this.authService = new BearerAuthService(
-        this.config.server.auth.bearerTokens,
-        this.clientRegistrations
-      );
-      
-      // Initialize OpenAPI generator
-      const baseUrl = this.config.server.http.publicUrl || 
-        `http://${this.config.server.http.host}:${this.config.server.http.port}`;
-      this.openApiGenerator = new DefaultOpenApiGenerator(baseUrl);
-      
-      // Initialize REST API service
-      this.restApiService = new ExpressRESTApiService(
-        this.config.server.http.port,
-        this.config.server.http.host,
-        this.clientRegistrations,
-        this.authService,
-        this.openApiGenerator,
-        this.wsServer
-      );
       
       // Start REST API server
       await this.restApiService.start();
@@ -131,4 +162,16 @@ export default class RESTifyServer {
       }
     }
   }
+}
+
+/**
+ * Generate a random token of specified length
+ */
+function generateRandomToken(length: number): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let token = '';
+  for (let i = 0; i < length; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
 } 
