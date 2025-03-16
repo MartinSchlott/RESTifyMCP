@@ -83,15 +83,6 @@ export interface ServerConfig {
 }
 
 /**
- * Server Configuration Legacy (for backward compatibility)
- */
-export interface ServerConfigLegacy {
-  port: number;
-  host: string;
-  bearerToken: string;
-}
-
-/**
  * Client Configuration
  */
 export interface ClientConfig {
