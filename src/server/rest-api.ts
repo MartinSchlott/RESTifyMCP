@@ -58,7 +58,6 @@ export class ExpressRESTApiService implements RESTApiService {
   private readonly apiSpaceManager: APISpaceManager;
   private readonly adminService: AdminService;
   private server: any | null = null;
-  private _clientCleanupInterval: NodeJS.Timeout | null = null;
 
   /**
    * Create a new ExpressRESTApiService
@@ -97,9 +96,6 @@ export class ExpressRESTApiService implements RESTApiService {
       );
     });
     
-    // Start client cleanup interval
-    this.startClientCleanupInterval();
-    
     logger.info('ExpressRESTApiService created');
   }
 
@@ -118,7 +114,7 @@ export class ExpressRESTApiService implements RESTApiService {
     this.setupAdminRoutes();
 
     // OpenAPI specification in JSON format for specific API Space
-    this.app.get('/openapi/:tokenHash.json', (req: Request, res: Response) => {
+    this.app.get('/openapi/:tokenHash/json', (req: Request, res: Response) => {
       const tokenHash = req.params.tokenHash;
       const apiSpace = this.adminService.getAPISpaceByTokenHash(tokenHash);
       if (!apiSpace) {
@@ -132,7 +128,7 @@ export class ExpressRESTApiService implements RESTApiService {
     });
 
     // OpenAPI specification in YAML format for specific API Space
-    this.app.get('/openapi/:tokenHash.yaml', (req: Request, res: Response) => {
+    this.app.get('/openapi/:tokenHash/yaml', (req: Request, res: Response) => {
       const tokenHash = req.params.tokenHash;
       const apiSpace = this.adminService.getAPISpaceByTokenHash(tokenHash);
       if (!apiSpace) {
@@ -235,7 +231,7 @@ export class ExpressRESTApiService implements RESTApiService {
 
     // Tool invocation endpoint with API Space support
     this.app.post(
-      '/api/:spaceToken/tools/:toolName',
+      '/api/tools/:toolName',
       (req: Request, res: Response, next: NextFunction) => this.authService.authenticateRequest(req, res, next),
       async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -286,7 +282,7 @@ export class ExpressRESTApiService implements RESTApiService {
    */
   private setupAdminRoutes(): void {
     // Login page
-    this.app.get('/admin/login', (req: Request, res: Response) => {
+    this.app.get('/login', (req: Request, res: Response) => {
       if (this.adminService.validateSession(req)) {
         res.redirect('/admin');
         return;
@@ -303,7 +299,7 @@ export class ExpressRESTApiService implements RESTApiService {
     });
 
     // Login handler
-    this.app.post('/admin/login', (req: Request, res: Response) => {
+    this.app.post('/login', (req: Request, res: Response) => {
       const { adminToken } = req.body;
       
       if (this.adminService.validateAdminToken(adminToken)) {
@@ -323,9 +319,9 @@ export class ExpressRESTApiService implements RESTApiService {
     });
 
     // Logout handler
-    this.app.get('/admin/logout', (req: Request, res: Response) => {
+    this.app.get('/logout', (req: Request, res: Response) => {
       res.clearCookie('adminSession');
-      res.redirect('/admin/login');
+      res.redirect('/login');
     });
 
     // Admin dashboard
@@ -409,18 +405,17 @@ export class ExpressRESTApiService implements RESTApiService {
    */
   async handleToolRequest(req: Request, res: Response): Promise<void> {
     const toolName = req.params.toolName;
-    const spaceToken = req.params.spaceToken;
     const bearerToken = (req as any).bearerToken;
     
     try {
-      logger.info(`Tool request received for ${toolName} in API Space ${spaceToken}`);
+      logger.info(`Tool request received for ${toolName}`);
       
-      // Verify API Space exists
-      const apiSpace = this.apiSpaceManager.getSpaceByToken(spaceToken);
+      // Get API Space from bearer token
+      const apiSpace = this.authService.getRequestAPISpace(req);
       if (!apiSpace) {
-        res.status(404).json({
-          error: 'API Space not found',
-          code: 'API_SPACE_NOT_FOUND'
+        res.status(401).json({
+          error: 'Unauthorized - Invalid API Space token',
+          code: 'INVALID_API_SPACE_TOKEN'
         });
         return;
       }
@@ -520,11 +515,6 @@ export class ExpressRESTApiService implements RESTApiService {
     return new Promise<void>((resolve, reject) => {
       // Close all SSE connections first
       this.closeSseConnections();
-      
-      // Clear any intervals we've set
-      if (this._clientCleanupInterval) {
-        clearInterval(this._clientCleanupInterval);
-      }
       
       if (this.server) {
         this.server.close((error: Error | undefined) => {
@@ -739,41 +729,6 @@ export class ExpressRESTApiService implements RESTApiService {
     return () => {
       ExpressRESTApiService.logListeners.delete(callback);
     };
-  }
-
-  /**
-   * Set up interval to clean up disconnected clients
-   * Removes clients that have been disconnected for more than 1 minute
-   */
-  private startClientCleanupInterval(): void {
-    const CLEANUP_INTERVAL_MS = 60000; // 1 minute
-    const DISCONNECTED_TIMEOUT_MS = 60000; // 1 minute
-    
-    this._clientCleanupInterval = setInterval(() => {
-      const now = Date.now();
-      let cleanedCount = 0;
-      
-      for (const [clientId, client] of this.clientRegistrations.entries()) {
-        // Only clean up disconnected clients
-        if (client.connectionStatus === 'disconnected') {
-          // Convert lastSeen to number if it's not already
-          const lastSeen = typeof client.lastSeen === 'number' ? 
-            client.lastSeen : new Date(client.lastSeen).getTime();
-          const disconnectedTime = now - lastSeen;
-          
-          // If client has been disconnected for more than the timeout, remove it
-          if (disconnectedTime > DISCONNECTED_TIMEOUT_MS) {
-            this.clientRegistrations.delete(clientId);
-            cleanedCount++;
-            logger.info(`Cleaned up disconnected client: ${clientId}`);
-          }
-        }
-      }
-      
-      if (cleanedCount > 0) {
-        logger.info(`Cleaned up ${cleanedCount} disconnected clients`);
-      }
-    }, CLEANUP_INTERVAL_MS);
   }
 
   /**

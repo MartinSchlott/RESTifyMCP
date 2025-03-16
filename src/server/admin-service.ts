@@ -94,7 +94,7 @@ export class DefaultAdminService implements AdminService {
     if (this.validateSession(req)) {
       next();
     } else {
-      res.redirect('/admin/login');
+      res.redirect('/login');
     }
   }
 

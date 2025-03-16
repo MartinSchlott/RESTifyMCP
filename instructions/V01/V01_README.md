@@ -41,92 +41,16 @@ The original specifications and instructions used to create this project are inc
 
 ## Development Timeline
 
-The V01 and V02 versions were developed with AI assistance:
+The entire project was developed with AI assistance:
 
-### V01 Initial Development
 - ~4 hours: Creating the specifications and instructions with Claude 3.7 Sonnet and ChatGPT-4o
 - 20 minutes: Initial code generation with Cursor based on the complete instructions
 - ~3 hours: Debugging and resolving inconsistencies (collaborative effort)
 - ~1 hour: Polishing and finalizing
 
-### V02 Multi-Tenant Architecture
-- ~2 hours: Creating the specifications and instructions with Claude 3.7 Sonnet
-- ~10 minutes: Code implementation by AI coders
-- ~5 minutes: Quality assurance and bug fixes
+The initial approach of providing all instructions at once (rather than step-by-step) made debugging more challenging, but aligned with the project's goal of testing AI's capabilities with minimal human guidance.
 
-## V02 Release: Multi-Tenant Architecture with API Spaces
-
-Version 2.0 introduces several major improvements to RESTifyMCP:
-
-### Key New Features
-
-1. **API Spaces**: A multi-tenant architecture that allows creating isolated API surfaces with separate authentication
-2. **Event-Based Connection Handling**: Immediate reactions to client connections/disconnections for improved reliability
-3. **Admin Dashboard**: A protected interface for monitoring and managing API Spaces
-4. **Secure OpenAPI Access**: Token-hash based URLs for sharing API documentation without exposing credentials
-
-### API Spaces
-
-API Spaces solve the architectural limitations mentioned in V01 by:
-
-- Creating isolated REST API surfaces with dedicated authentication tokens
-- Allowing client sharing between spaces without duplicating connections
-- Providing separate OpenAPI documentation for each space
-- Supporting granular access control to tools
-
-Example configuration with API Spaces:
-
-```json
-{
-  "mode": "server",
-  "server": {
-    "http": {
-      "port": 3000,
-      "host": "localhost",
-      "publicUrl": "https://example.com"
-    },
-    "apiSpaces": [
-      {
-        "name": "public-api",
-        "description": "Public API with limited tools",
-        "bearerToken": "public-api-token-123",
-        "allowedClientTokens": ["client-token-1", "shared-client-token-3"]
-      },
-      {
-        "name": "internal-api",
-        "description": "Internal API with full access",
-        "bearerToken": "internal-api-token-456",
-        "allowedClientTokens": ["client-token-2", "shared-client-token-3"]
-      }
-    ],
-    "admin": {
-      "adminToken": "secure-admin-token-789"
-    }
-  }
-}
-```
-
-### Admin Dashboard
-
-V02 includes a secure admin dashboard that provides:
-
-- Real-time monitoring of connected clients
-- Overview of all API Spaces and their tools
-- Links to OpenAPI documentation for each space
-- System status and logs
-
-Access the dashboard at `/admin` after logging in with your admin token.
-
-### Secure OpenAPI Sharing
-
-OpenAPI documentation is now available through secure token-hash URLs:
-
-```
-https://your-server/openapi/{token-hash}/json
-https://your-server/openapi/{token-hash}/yaml
-```
-
-These URLs can be safely shared without exposing the actual API tokens.
+While there are still some implementation quirks that a human developer might have approached differently (such as the Combo mode), the tool works effectively as a proof of concept rather than an MVP. It's already being used with CustomGPTs to test MCP servers in real-world scenarios.
 
 ## Recommended Deployment
 
@@ -137,6 +61,16 @@ RESTifyMCP is best deployed on an internet server (like AWS Lightsail) behind an
 - Additional security features through Nginx (rate limiting, etc.)
 
 When configuring, pay special attention to secure bearer tokens as these are your primary security feature.
+
+## Current Limitations
+
+While functional as a proof of concept, there are several known technical limitations:
+
+- **Authentication System**: The bearer token implementation is basic and was designed for simple use cases. It lacks proper client isolation.
+- **Multi-Client Strategy**: The current approach to handling multiple clients has architectural limitations that would need to be addressed for production use.
+- **OpenAPI Generation**: The generated YAML/JSON is a large amalgamation of all connected clients' tools, which lacks proper segmentation.
+
+These limitations don't impact basic testing scenarios but should be considered if adapting this tool for more critical applications. Contributions to improve these areas are welcome.
 
 ## Configuration
 
@@ -159,16 +93,8 @@ In server mode, RESTifyMCP starts an HTTP server that provides a REST API. Clien
       "host": "localhost",
       "publicUrl": "http://localhost:3000"
     },
-    "apiSpaces": [
-      {
-        "name": "default",
-        "description": "Default API Space",
-        "bearerToken": "your-secret-token",
-        "allowedClientTokens": ["client-token-1", "client-token-2"]
-      }
-    ],
-    "admin": {
-      "adminToken": "your-admin-token"
+    "auth": {
+      "bearerTokens": ["your-secret-token-1", "your-secret-token-2"]
     }
   }
 }
@@ -183,7 +109,7 @@ In client mode, RESTifyMCP starts an MCP server via stdio and connects to a REST
   "mode": "client",
   "client": {
     "serverUrl": "http://localhost:3000",
-    "bearerToken": "client-token-1",
+    "bearerToken": "your-secret-token",
     "mcpCommand": "node",
     "mcpArgs": ["./path/to/mcp-server.js"]
   }
@@ -203,26 +129,30 @@ In combo mode, RESTifyMCP runs both server and client in a single process.
       "host": "localhost",
       "publicUrl": "http://localhost:3000"
     },
-    "apiSpaces": [
-      {
-        "name": "default",
-        "description": "Default API Space",
-        "bearerToken": "your-secret-token",
-        "allowedClientTokens": ["client-token-1"]
-      }
-    ],
-    "admin": {
-      "adminToken": "your-admin-token"
+    "auth": {
+      "bearerTokens": ["your-secret-token"]
     }
   },
   "client": {
     "serverUrl": "http://localhost:3000",
-    "bearerToken": "client-token-1",
+    "bearerToken": "your-secret-token",
     "mcpCommand": "node",
     "mcpArgs": ["./path/to/mcp-server.js"]
   }
 }
 ```
+
+### Authentication
+
+RESTifyMCP uses bearer tokens for authentication. You can configure one or more allowed tokens in the server configuration:
+
+```json
+"auth": {
+  "bearerTokens": ["token1", "token2", "token3"]
+}
+```
+
+When clients connect, they are associated with one of these tokens. All API requests must include an `Authorization: Bearer <token>` header.
 
 ### Example: Filesystem MCP Server
 
@@ -237,21 +167,13 @@ Here's an example configuration for using RESTifyMCP with the filesystem MCP ser
       "host": "localhost",
       "publicUrl": "http://example.com"
     },
-    "apiSpaces": [
-      {
-        "name": "default",
-        "description": "Default API Space",
-        "bearerToken": "your-secure-token-here",
-        "allowedClientTokens": ["fs-client-token"]
-      }
-    ],
-    "admin": {
-      "adminToken": "secure-admin-token"
+    "auth": {
+      "bearerTokens": ["your-secure-token-here"]
     }
   },
   "client": {
     "serverUrl": "http://localhost:3000",
-    "bearerToken": "fs-client-token",
+    "bearerToken": "your-secure-token-here",
     "mcpCommand": "npx",
     "mcpArgs": [
       "-y", 
@@ -263,6 +185,14 @@ Here's an example configuration for using RESTifyMCP with the filesystem MCP ser
 }
 ```
 
+### Deployment Tips
+
+When deploying RESTifyMCP behind a reverse proxy like Nginx:
+
+1. Update the `publicUrl` in your RESTifyMCP config to match your domain
+2. Use strong, random bearer tokens
+3. Consider enabling rate limiting for additional security
+
 ## API Documentation
 
 RESTifyMCP automatically generates OpenAPI documentation based on the connected MCP servers and their available tools.
@@ -270,31 +200,75 @@ RESTifyMCP automatically generates OpenAPI documentation based on the connected 
 ### OpenAPI Specification
 
 Access the generated OpenAPI documentation at:
-- JSON format: `http://your-server/openapi/{token-hash}/json`
-- YAML format: `http://your-server/openapi/{token-hash}/yaml`
+- JSON format: `http://your-server:port/openapi.json`
+- YAML format: `http://your-server:port/openapi.yaml`
 
 These specifications can be imported into tools like Postman or directly used with OpenAI's CustomGPTs.
 
+#### OpenAI Compatibility Features
+
+RESTifyMCP includes special OpenAPI customizations for better integration with OpenAI's products:
+
+- Descriptions are limited to 300 characters (OpenAI requirement)
+- Tools include `x-openai-isConsequential: false` to prevent unnecessary confirmation prompts
+- Simplified schema structure for more reliable tool usage with CustomGPTs
+
+### Main Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `/api/tools/{toolName}` | Invoke a specific tool with parameters |
+| `/info` | Dashboard showing connected clients, available tools, and logs |
+| `/openapi.json` | OpenAPI specification in JSON format |
+| `/openapi.yaml` | OpenAPI specification in YAML format |
+| `/logs/events` | Server-sent events (SSE) stream of server logs |
+
+### Authentication
+
+All API requests require authentication using a Bearer token:
+
+```
+Authorization: Bearer your-token-here
+```
+
+The token must match one of the configured tokens in your server configuration.
+
 ### Invoking Tools
 
-To call a tool, send a POST request to `/api/tools/{toolName}` with:
-1. The API Space bearer token in the Authorization header
-2. Tool parameters as JSON in the request body
+To call a tool, send a POST request to `/api/tools/{toolName}` with the tool parameters as JSON in the request body:
 
 ```bash
 curl -X POST http://your-server:port/api/tools/read_file \
-  -H "Authorization: Bearer your-api-space-token" \
+  -H "Authorization: Bearer your-token-here" \
   -H "Content-Type: application/json" \
   -d '{"path": "/path/to/file"}'
 ```
+
+The response will contain the tool's result:
+
+```json
+{
+  "result": "Content of the file..."
+}
+```
+
+### Tool Discovery
+
+To discover what tools are available:
+
+1. Check the `/info` dashboard for a visual overview
+2. Examine the OpenAPI specification for detailed schema information
+3. Use the OpenAPI schema to understand the required parameters for each tool
 
 ### Using with CustomGPTs
 
 When setting up a CustomGPT:
 
-1. Use the URL of your RESTifyMCP server's `/openapi/{token-hash}/yaml` endpoint as the API schema URL
-2. Configure the authentication with your API Space bearer token
+1. Use the URL of your RESTifyMCP server's `/openapi.yaml` endpoint as the API schema URL
+2. Configure the authentication with your bearer token
 3. Test the connection to verify the tools are accessible
+
+The CustomGPT will then be able to use all tools provided by your MCP servers through the RESTifyMCP interface.
 
 ## License and Branding
 
@@ -304,6 +278,6 @@ The name "AI-Inquisitor" and any associated logos or branding elements are prope
 
 ---
 
-*"RESTifyMCP bridges the gap between evolving AI tool protocols and established API standards—continuously improved through human-AI collaboration."*
+*"RESTifyMCP is the bridge between the future of AI tooling protocols and today's widely adopted API standards—created through human-AI collaboration."*
 
 *"// tell OpenAI that this is not a consequential tool (it does not change the state of the world)" - VSC Copilot*
