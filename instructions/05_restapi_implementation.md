@@ -35,6 +35,23 @@ export class ExpressRESTApiService implements RESTApiService {
     apiSpaceManager: APISpaceManager
   ) {
     // Initialize with API Space Manager
+    // Subscribe to client connection events
+  }
+  
+  /**
+   * Subscribe to WebSocket server events
+   */
+  subscribeToConnectionEvents(wsServer: WebSocketEventEmitter): void {
+    // Listen for client disconnections
+    wsServer.onClientDisconnect((clientId: string) => {
+      // When a client disconnects, update internal state
+      // No need to wait for cleanup interval
+    });
+    
+    // Listen for client connections
+    wsServer.onClientConnect((clientId: string) => {
+      // When a client connects, update internal state
+    });
   }
   
   // Other existing properties and methods

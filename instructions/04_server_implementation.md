@@ -99,10 +99,47 @@ Implementation notes:
 - Use the first API Space's token for WebSocket server initialization
 - Pass the API Space manager to the authentication service and REST API service
 
-### 4. WebSocket Server Considerations
+### 4. WebSocket Server Enhancements
 
-The WebSocket server needs minimal changes:
+The WebSocket server needs significant updates to handle connection events:
 
+```typescript
+export interface WebSocketEventEmitter {
+  // Register callbacks for connection events
+  onClientConnect(callback: (clientId: string) => void): void;
+  onClientDisconnect(callback: (clientId: string) => void): void;
+}
+
+export class WSServer implements ToolInvoker, WebSocketEventEmitter {
+  // Add event handling capabilities
+  private connectListeners: Set<(clientId: string) => void> = new Set();
+  private disconnectListeners: Set<(clientId: string) => void> = new Set();
+  
+  // Implement event registration methods
+  onClientConnect(callback: (clientId: string) => void): void {
+    // Register connect listener
+  }
+  
+  onClientDisconnect(callback: (clientId: string) => void): void {
+    // Register disconnect listener
+  }
+  
+  // Update connection handling methods to emit events
+  private handleConnection(socket: WebSocket, request: IncomingMessage): void {
+    // Regular connection handling
+    // ...
+    // Emit connect event
+  }
+  
+  private handleClose(clientId: string): void {
+    // Update client status
+    // Emit disconnect event immediately
+  }
+}
+```
+
+Implementation notes:
+- Emit events immediately when connection status changes
 - Continue using a single token for client connections
 - Optionally validate that clients connecting have membership in at least one API Space
 - Client registrations remain unaware of API Spaces (keeping clients passive)

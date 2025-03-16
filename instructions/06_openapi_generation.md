@@ -63,17 +63,22 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
 The filtering logic should respect API Space boundaries:
 
 ```typescript
-// Conceptual helper method for filtering clients by API Space
+// Conceptual helper method for filtering clients by API Space and connection status
 
-private filterClientsByApiSpace(
+private filterClientsForApiSpace(
   clientRegistrations: Map<string, ClientRegistration> | ClientRegistration[],
   apiSpace: APISpace
 ): ClientRegistration[] {
   // Implementation notes:
   // 1. Convert clientRegistrations to array if it's a Map
-  // 2. Filter clients to only include those whose tokens are in apiSpace.allowedClientTokens
-  // 3. Only include connected clients
+  // 2. Filter clients by connection status - ONLY include connected clients
+  // 3. Then filter by API Space - only include those whose tokens are in apiSpace.allowedClientTokens
   // 4. Return the filtered array of clients
+  
+  // Implementation example (conceptual):
+  // return Array.from(clientRegistrationsAsArray)
+  //   .filter(client => client.connectionStatus === 'connected')
+  //   .filter(client => apiSpace.allowedClientTokens.includes(client.bearerToken));
 }
 ```
 

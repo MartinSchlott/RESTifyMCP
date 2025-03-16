@@ -4,27 +4,32 @@ This document provides an overview of the instruction files for developing RESTi
 
 ## Instruction Files
 
-1. **01_newconfig.md** (already created)
+1. **01_client_connection_handling.md**
+   - Immediate reaction to client disconnections
+   - Removal of "ghost tools" from API definitions
+   - Event-based architecture for connection status
+
+2. **02_newconfig.md**
    - Introduction to the API Spaces concept
    - New server configuration structure
    - Benefits compared to V01
 
-2. **02_data_structures.md**
+3. **03_data_structures.md**
    - New interfaces for API Spaces
    - Adaptations to existing types
    - Data flow diagram for API Spaces
 
-3. **03_server_implementation.md** 
+4. **04_server_implementation.md** 
    - Changes to the Server class
    - API Space management
    - Adaptations to BearerAuthService
 
-4. **04_restapi_implementation.md**
+5. **05_restapi_implementation.md**
    - Changes to ExpressRESTApiService
    - Routing based on API Spaces
    - Separate OpenAPI generation per space
 
-5. **05_openapi_generation.md**
+6. **06_openapi_generation.md**
    - Adapting the OpenApiGenerator for multi-tenant
    - Generating separate documentation per space
    - Modifications for better readability
