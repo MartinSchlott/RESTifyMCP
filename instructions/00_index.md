@@ -34,4 +34,10 @@ This document provides an overview of the instruction files for developing RESTi
    - Generating separate documentation per space
    - Modifications for better readability
 
+7. **07_admin_interface.md**
+   - Admin authentication with token-based login
+   - OpenAPI access via token-hash URLs
+   - Redesigned dashboard focused on API Spaces
+   - Log management integration
+
 This step-by-step approach gives AI coders a clear understanding of the architecture while leaving them enough freedom for the specific implementation details.

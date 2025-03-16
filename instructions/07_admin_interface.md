@@ -11,9 +11,9 @@ This document outlines the implementation of an admin interface with token-based
 3. Create accessible but protected OpenAPI documentation URLs
 4. Maintain logging functionality
 
-## Admin Authentication
+## Admin Authentication Concept
 
-Implement a simple admin authentication system:
+Enhance the server configuration to include admin authentication:
 
 ```typescript
 export interface AdminConfig {
@@ -21,268 +21,125 @@ export interface AdminConfig {
   adminToken: string;
 }
 
-// Add to server config
+// Addition to server config
 export interface ServerConfig {
-  http: { /*...*/ },
-  apiSpaces: APISpace[];
-  admin: AdminConfig;
-  logging?: { /*...*/ };
+  // ... existing fields
+  admin?: AdminConfig;
 }
 ```
 
-Implementation notes:
-- Add a simple login page that requires the admin token
-- Store the authentication state in a session cookie
-- Redirect unauthenticated requests to the login page
-- Set reasonable session expiration
-
-## Login Page
-
-Create a simple but secure login page:
-
-```typescript
-// Route handler for login page
-this.app.get('/login', (req: Request, res: Response) => {
-  res.type('text/html').send(this.generateLoginPageHtml());
-});
-
-// POST handler for authentication
-this.app.post('/login', express.urlencoded({ extended: true }), (req: Request, res: Response) => {
-  const { token } = req.body;
-  
-  // Validate token against admin token
-  if (token === this.config.server.admin.adminToken) {
-    // Set session cookie
-    res.cookie('admin_session', this.generateSessionToken(), {
-      httpOnly: true,
-      secure: true,
-      maxAge: 3600000 // 1 hour
-    });
-    res.redirect('/info');
-  } else {
-    res.status(401).send(this.generateLoginPageHtml(true));
-  }
-});
-```
+Implementation approach:
+- Create a login page that requires the admin token
+- Use session-based authentication with secure cookies
+- Protect admin routes with authentication middleware
+- Implement logout functionality
 
 ## OpenAPI Access via Token Hash
 
-Implement a new URL scheme for accessing OpenAPI documentation:
+Define a new URL scheme for accessing OpenAPI documentation:
 
-```typescript
-// Route handlers for OpenAPI docs with token-hash URLs
-this.app.get('/openapi/:tokenHash/json', (req: Request, res: Response) => {
-  const tokenHash = req.params.tokenHash;
-  const apiSpace = this.resolveTokenHash(tokenHash);
-  
-  if (!apiSpace) {
-    return res.status(404).json({ error: 'API Space not found' });
-  }
-  
-  res.json(this.getOpenApiSpec(apiSpace));
-});
-
-this.app.get('/openapi/:tokenHash/yaml', (req: Request, res: Response) => {
-  const tokenHash = req.params.tokenHash;
-  const apiSpace = this.resolveTokenHash(tokenHash);
-  
-  if (!apiSpace) {
-    return res.status(404).type('text/plain').send('API Space not found');
-  }
-  
-  res.type('text/yaml').send(yamlDump(this.getOpenApiSpec(apiSpace)));
-});
+```
+/openapi/{tokenHash}/yaml
+/openapi/{tokenHash}/json
 ```
 
-Implementation notes:
-- Create a secure hash of each API Space token (e.g., SHA-256)
-- Store a mapping of token hashes to API Spaces
-- Update the info page to include links to these new URLs
-- Keep the old URL scheme working for backward compatibility
+Where `{tokenHash}` is a secure one-way hash of the API Space token.
+
+Implementation considerations:
+- Generate cryptographically secure hashes of API Space tokens
+- Create a mapping between hashes and API Spaces
+- Make these endpoints accessible without authentication
+- Include links to these endpoints in the admin dashboard
 
 ## Token Hash Generation
 
-Implement a secure method for generating token hashes:
+The system should provide a secure way to map from tokens to hashes:
+
+- Use a cryptographic hash function (e.g., SHA-256)
+- Optionally add salt for additional security
+- Create a lookup mechanism to resolve API Spaces from token hashes
+- Generate these hashes when API Spaces are initialized
+
+## Updated Admin Dashboard
+
+The admin dashboard should focus on API Spaces with:
+
+1. **Overview Statistics**
+   - Total number of API Spaces
+   - Total number of connected clients
+   - System uptime
+
+2. **API Space List**
+   - Name and description of each API Space
+   - Count of connected clients per space
+   - Links to OpenAPI documentation
+   - Expandable list of connected clients
+
+3. **Client Information**
+   - Client ID (shortened for readability)
+   - Connection status and time
+   - Number of provided tools
+
+The dashboard should not display individual tools to keep the interface focused and manageable.
+
+## Log Management
+
+Maintain the existing logging functionality:
+
+- Protect the logs page with admin authentication
+- Keep the server-sent events (SSE) stream for real-time logs
+- Allow filtering of logs by severity and component
+- Ensure the logs are easily accessible from the dashboard
+
+## Authentication Middleware
+
+Create middleware to enforce admin authentication:
 
 ```typescript
-/**
- * Generate a secure hash of an API Space token
- */
-private generateTokenHash(token: string): string {
-  // Use a cryptographic hash function (SHA-256)
-  const hash = createHash('sha256');
-  hash.update(token);
-  return hash.digest('hex');
-}
-
-/**
- * Resolve an API Space from a token hash
- */
-private resolveTokenHash(tokenHash: string): APISpace | null {
-  // Implementation to look up API Space by token hash
-}
-```
-
-## Updated Info Dashboard
-
-Redesign the info dashboard to focus on API Spaces and clients:
-
-```typescript
-private generateInfoPageHtml(): string {
-  // Generate API Spaces section
-  let apiSpacesHtml = '';
-  for (const space of this.apiSpaceManager.getAllSpaces()) {
-    const connectedClients = this.getConnectedClientsForSpace(space.name);
-    
-    apiSpacesHtml += `
-      <div class="api-space-card">
-        <h3>${space.name}</h3>
-        <p>${space.description || 'No description'}</p>
-        <div class="api-space-stats">
-          <span>Connected Clients: ${connectedClients.length}</span>
-        </div>
-        <div class="api-space-links">
-          <a href="/openapi/${this.getTokenHashForSpace(space)}/yaml" target="_blank">OpenAPI YAML</a>
-          <a href="/openapi/${this.getTokenHashForSpace(space)}/json" target="_blank">OpenAPI JSON</a>
-        </div>
-        <div class="api-space-clients">
-          <h4>Connected Clients</h4>
-          ${this.generateClientListHtml(connectedClients)}
-        </div>
-      </div>
-    `;
-  }
+interface AuthMiddleware {
+  // Middleware to protect admin routes
+  requireAdminAuth(req: Request, res: Response, next: NextFunction): void;
   
-  // Insert into template
-  let htmlTemplate = /* ... */;
-  return htmlTemplate
-    .replace('{{apiSpacesHtml}}', apiSpacesHtml)
-    .replace('{{totalSpaces}}', this.apiSpaceManager.getAllSpaces().length.toString())
-    .replace('{{totalClients}}', this.getConnectedClientCount().toString());
+  // Validate admin token
+  validateAdminToken(token: string): boolean;
+  
+  // Generate and validate session tokens
+  createSession(res: Response): void;
+  validateSession(req: Request): boolean;
 }
-```
-
-## Logs Interface
-
-Maintain the existing logs streaming interface:
-
-```typescript
-// Route handler for logs page (with admin authentication)
-this.app.get('/logs', this.requireAdminAuth.bind(this), (req: Request, res: Response) => {
-  res.type('text/html').send(this.generateLogsPageHtml());
-});
-
-// SSE endpoint for log streaming (with admin authentication)
-this.app.get('/logs/events', this.requireAdminAuth.bind(this), (req: Request, res: Response) => {
-  // Existing SSE implementation
-});
 ```
 
 ## Implementation Strategy
 
-1. Add admin configuration to the server config
-2. Create a simple login page and authentication system
-3. Implement token hash generation for API Spaces
-4. Add new URL routes for OpenAPI access
-5. Update the info dashboard to focus on API Spaces
-6. Ensure logs functionality remains accessible through admin auth
+1. Add admin configuration to the server config schema
+2. Implement a login flow with the necessary routes and templates
+3. Create a secure token hash generation system
+4. Update the OpenAPI access routes to use token hashes
+5. Redesign the admin dashboard to focus on API Spaces
+6. Apply authentication to the appropriate routes
 
-## Visual Design Guidelines
+## UI Design Considerations
 
-This section provides design suggestions for the admin interface. These are optional and can be adapted or replaced based on implementation preferences.
+The admin interface should follow these design principles:
 
-### Login Page
+1. **Clean and Focused**
+   - Prioritize information hierarchy
+   - Use white space effectively
+   - Employ a limited, consistent color palette
 
-Create a clean, simple login page:
+2. **Functional Layout**
+   - Card-based design for API Spaces
+   - Clear separation between different information sections
+   - Responsive design that works on both desktop and mobile
 
-```html
-<div class="login-container">
-  <div class="login-card">
-    <h2>RESTifyMCP Admin</h2>
-    <form method="post" action="/login">
-      <div class="input-group">
-        <label for="token">Admin Token</label>
-        <input type="password" id="token" name="token" required autofocus>
-      </div>
-      <button type="submit">Log In</button>
-      {{#if error}}
-      <div class="error-message">Invalid token</div>
-      {{/if}}
-    </form>
-  </div>
-</div>
-```
+3. **Visual Hierarchy**
+   - Important information should be immediately visible
+   - Secondary details can be hidden in expandable sections
+   - Use consistent styling for similar elements
 
-Styling suggestions:
-- Use a card-based design with subtle shadows
-- Implement responsive layout that works on mobile and desktop
-- Use a calming color scheme (blues and grays work well for admin interfaces)
-- Keep the form centered with adequate whitespace
+4. **Navigation**
+   - Provide clear paths between dashboard and logs
+   - Include a logout option
+   - Ensure all actions are clearly labeled
 
-### Dashboard Layout
-
-Structure the dashboard with a clear hierarchy:
-
-1. **Header** - With logo, title, and logout button
-2. **Statistics Summary** - Cards showing total API Spaces and clients
-3. **API Spaces Grid** - Cards for each API Space with:
-   - Name and description
-   - Client count
-   - OpenAPI links
-   - Expandable client list
-4. **Footer** - With version information and links to logs
-
-### API Space Cards
-
-Design each API Space card to clearly present information:
-
-```html
-<div class="api-space-card">
-  <div class="card-header">
-    <h3>{{name}}</h3>
-    <span class="badge">{{clientCount}} clients</span>
-  </div>
-  <p class="description">{{description}}</p>
-  <div class="links">
-    <a href="/openapi/{{tokenHash}}/yaml" class="button">OpenAPI YAML</a>
-    <a href="/openapi/{{tokenHash}}/json" class="button secondary">OpenAPI JSON</a>
-  </div>
-  <details>
-    <summary>Connected Clients</summary>
-    <ul class="client-list">
-      {{#each clients}}
-      <li>
-        <span class="client-id">{{id}}</span>
-        <span class="connection-time">Connected: {{connectedTime}}</span>
-      </li>
-      {{/each}}
-    </ul>
-  </details>
-</div>
-```
-
-Consider using:
-- A grid or flex layout for responsive design
-- Collapsible sections for client details
-- Clear visual hierarchy with consistent spacing
-- Subtle visual indicators for connection status
-
-### Color Scheme Suggestion
-
-```css
-:root {
-  --primary-color: #3498db;
-  --secondary-color: #2c3e50;
-  --success-color: #2ecc71;
-  --warning-color: #f39c12;
-  --danger-color: #e74c3c;
-  --light-color: #ecf0f1;
-  --dark-color: #34495e;
-  --background-color: #f5f7fa;
-  --card-color: #ffffff;
-  --text-color: #333333;
-  --text-light: #7f8c8d;
-}
-```
-
-This professional color scheme provides good contrast while maintaining a modern look suitable for an admin interface.
+The specific implementation details should align with these principles while allowing the developers freedom to choose the exact styling approach.

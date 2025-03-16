@@ -46,6 +46,9 @@ The server configuration has been redesigned to support API Spaces:
         "allowedClientTokens": ["test-client-token", "shared-client-token-3"]
       }
     ],
+    "admin": {
+      "adminToken": "secure-admin-token-789"
+    },
     "logging": {
       "level": "info",
       "format": "json"
@@ -66,6 +69,7 @@ The same client can be shared across multiple API Spaces, allowing for reuse of 
 - Server now requires at least one API Space with a defined bearer token
 - Each API Space has its own access control list of allowed clients
 - Clients remain passive and are unaware of which API Spaces they belong to
+- Admin interface protected by a separate admin token
 
 ### 4. Improved OpenAPI Generation
 Each API Space generates its own dedicated OpenAPI documentation, containing only the tools available in that space, resulting in cleaner, more focused API specs.
