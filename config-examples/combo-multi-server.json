@@ -1,0 +1,56 @@
+{
+  "mode": "combo",
+  "server": {
+    "http": {
+      "port": 3000,
+      "host": "localhost",
+      "publicUrl": "http://localhost:3000"
+    },
+    "apiSpaces": [
+      {
+        "name": "default",
+        "description": "Default API Space",
+        "bearerToken": "api-token-123456789012345678901234567890ab",
+        "allowedClientTokens": [
+          "built-in-client-token-12345678901234567890ab",
+          "external-client-token-12345678901234567890ab"
+        ]
+      },
+      {
+        "name": "admin",
+        "description": "Admin API Space with all tools",
+        "bearerToken": "admin-api-token-123456789012345678901234ab",
+        "allowedClientTokens": [
+          "built-in-client-token-12345678901234567890ab",
+          "external-client-token-12345678901234567890ab",
+          "external-client-token-2-12345678901234567890ab"
+        ]
+      }
+    ],
+    "admin": {
+      "adminToken": "secure-admin-token-123456789012345678901234ab"
+    }
+  },
+  "client": {
+    "serverUrl": "http://localhost:3000",
+    "bearerToken": "built-in-client-token-12345678901234567890ab",
+    "mcpServers": [
+      {
+        "id": "filesystem",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
+      },
+      {
+        "id": "database",
+        "command": "node",
+        "args": ["./database-mcp-server.js"],
+        "env": {
+          "DB_HOST": "localhost",
+          "DB_USER": "user",
+          "DB_PASS": "password"
+        }
+      }
+    ]
+  },
+  "allowExternalClients": true
+} 

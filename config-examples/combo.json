@@ -1,0 +1,19 @@
+{
+  "mode": "combo",
+  "server": {
+    "http": {
+      "port": 3000,
+      "host": "localhost",
+      "publicUrl": "http://localhost:3000"
+    },
+    "auth": {
+      "bearerTokens": ["0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"]
+    }
+  },
+  "client": {
+    "serverUrl": "http://localhost:3000",
+    "bearerToken": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "mcpCommand": "node",
+    "mcpArgs": ["./path/to/mcp-server.js"]
+  }
+} 
