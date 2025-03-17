@@ -77,12 +77,12 @@ export class WSClient implements WSClientInterface {
       .replace(/^http:\/\//i, 'ws://')
       .replace(/^https:\/\//i, 'wss://');
     
-    // Append /client path for the WebSocket endpoint
+    // Append /ws path for the WebSocket endpoint
     const url = new URL(this.serverUrl);
     // Handle paths properly - ensure we don't duplicate slashes
     url.pathname = url.pathname.endsWith('/') 
-      ? `${url.pathname}client` 
-      : `${url.pathname}/client`;
+      ? `${url.pathname}ws` 
+      : `${url.pathname}/ws`;
     
     this.serverUrl = url.toString();
     this.clientId = clientId; // Must be provided and derived from token

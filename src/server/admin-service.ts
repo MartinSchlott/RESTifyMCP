@@ -112,8 +112,8 @@ export class DefaultAdminService implements AdminService {
     // Create a session cookie that expires in 24 hours
     res.cookie('adminSession', this.getTokenHash(this.adminToken), {
       httpOnly: true,
-      secure: true,
-      sameSite: 'strict',
+      secure: false, // Allow HTTP for local development
+      sameSite: 'lax',
       maxAge: 24 * 60 * 60 * 1000 // 24 hours
     });
   }

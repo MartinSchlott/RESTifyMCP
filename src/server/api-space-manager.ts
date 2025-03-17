@@ -3,7 +3,7 @@
  * 
  * This module manages the relationships between clients and API Spaces.
  */
-import { APISpace } from '../shared/types.js';
+import { APISpace, ClientRegistration } from '../shared/types.js';
 import { ConsoleLogger, LogLevel } from '../shared/utils.js';
 
 // Set up logger
@@ -31,7 +31,7 @@ export interface APISpaceManager {
   /**
    * Check if a client is allowed in a specific API Space
    */
-  isClientAllowedInSpace(clientToken: string, spaceToken: string): boolean;
+  isClientAllowedInSpace(clientId: string, spaceName: string): boolean;
   
   /**
    * Get all client tokens that belong to a space
@@ -67,10 +67,14 @@ export class DefaultAPISpaceManager implements APISpaceManager {
   // Maps API Space tokens to their names for quick lookup
   private spaceTokenToName: Map<string, string> = new Map();
   
+  // Client registrations map
+  private readonly clientRegistrations: Map<string, ClientRegistration>;
+  
   /**
    * Initialize from server configuration
    */
-  constructor(apiSpaces: APISpace[] = []) {
+  constructor(apiSpaces: APISpace[] = [], clientRegistrations: Map<string, ClientRegistration> = new Map()) {
+    this.clientRegistrations = clientRegistrations;
     this.initialize(apiSpaces);
   }
   
@@ -137,18 +141,21 @@ export class DefaultAPISpaceManager implements APISpaceManager {
   /**
    * Check if a client is allowed in a specific API Space
    */
-  isClientAllowedInSpace(clientToken: string, spaceToken: string): boolean {
-    const spaceName = this.spaceTokenToName.get(spaceToken);
-    if (!spaceName) {
+  isClientAllowedInSpace(clientId: string, spaceName: string): boolean {
+    // Get the space by name
+    const space = this.spaceNameToSpace.get(spaceName);
+    if (!space) {
       return false;
     }
     
-    const clientSpaces = this.clientTokenToSpaces.get(clientToken);
-    if (!clientSpaces) {
-      return false;
+    // For each client registration, check if the client ID matches and if the bearer token is allowed
+    for (const [id, client] of this.clientRegistrations.entries()) {
+      if (id === clientId && space.allowedClientTokens.includes(client.bearerToken)) {
+        return true;
+      }
     }
     
-    return clientSpaces.has(spaceName);
+    return false;
   }
   
   /**

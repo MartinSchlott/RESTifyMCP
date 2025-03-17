@@ -131,9 +131,7 @@
                     autocomplete="current-password"
                     placeholder="Enter your admin token"
                 >
-                {{#if error}}
-                <div class="error-message">{{error}}</div>
-                {{/if}}
+                <div class="error-message" id="error-message" style="display: none;"></div>
             </div>
             
             <button type="submit" class="button">Login</button>

@@ -309,7 +309,22 @@ export class ExpressRESTApiService implements RESTApiService {
         try {
           const templatePath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'static', 'login.html');
           let html = fs.readFileSync(templatePath, 'utf8');
-          html = html.replace('{{error}}', 'Invalid admin token');
+          
+          // Add script to show error message
+          const errorScript = `
+            <script>
+              document.addEventListener('DOMContentLoaded', function() {
+                const errorElement = document.getElementById('error-message');
+                if (errorElement) {
+                  errorElement.textContent = 'Invalid admin token';
+                  errorElement.style.display = 'block';
+                }
+              });
+            </script>
+          `;
+          
+          // Insert the script before the closing body tag
+          html = html.replace('</body>', `${errorScript}</body>`);
           res.send(html);
         } catch (error) {
           logger.error(`Error reading login template: ${(error as Error).message}`);
@@ -335,54 +350,67 @@ export class ExpressRESTApiService implements RESTApiService {
           // Get dashboard data
           const data = await this.adminService.generateDashboardData();
           
-          // Replace placeholders with data
+          // Replace simple placeholders
           html = html
             .replace('{{apiSpacesCount}}', data.apiSpacesCount.toString())
             .replace('{{connectedClientsCount}}', data.connectedClientsCount.toString())
             .replace('{{totalToolsCount}}', data.totalToolsCount.toString())
             .replace('{{uptime}}', data.uptime);
           
-          // Generate API Spaces HTML
-          let apiSpacesHtml = '';
-          for (const space of data.apiSpaces) {
-            apiSpacesHtml += `
-              <div class="api-space-card">
-                <h3>${space.name}</h3>
-                <p>${space.description}</p>
-                <div class="stats">
-                  <div class="stat">
-                    <span>Clients</span>
-                    <strong>${space.clientCount}</strong>
-                  </div>
-                  <div class="stat">
-                    <span>Tools</span>
-                    <strong>${space.toolCount}</strong>
-                  </div>
-                </div>
-                <div>
-                  <a href="/openapi/${space.tokenHash}/json" class="button button-outline" target="_blank">OpenAPI (JSON)</a>
-                  <a href="/openapi/${space.tokenHash}/yaml" class="button button-outline" target="_blank">OpenAPI (YAML)</a>
-                </div>
-                <div class="client-list">
-                  ${space.clients.map((client: { id: string; connectionStatus: string; toolCount: number }) => `
-                    <div class="client-item">
-                      <span class="status ${client.connectionStatus}"></span>
-                      ${client.id} (${client.toolCount} tools)
-                    </div>
-                  `).join('')}
-                </div>
-              </div>
-            `;
-          }
+          // Handle the API Spaces section with Handlebars-style templates
+          // First, extract the template between {{#apiSpaces}} and {{/apiSpaces}}
+          const apiSpacesRegex = /{{#apiSpaces}}([\s\S]*?){{\/apiSpaces}}/;
+          const apiSpacesMatch = html.match(apiSpacesRegex);
           
-          html = html.replace('{{apiSpaces}}', apiSpacesHtml);
+          if (apiSpacesMatch) {
+            const apiSpaceTemplate = apiSpacesMatch[1];
+            let apiSpacesHtml = '';
+            
+            // For each API space, apply the template
+            for (const space of data.apiSpaces) {
+              let spaceHtml = apiSpaceTemplate
+                .replace(/{{name}}/g, space.name || '')
+                .replace(/{{description}}/g, space.description || '')
+                .replace(/{{clientCount}}/g, space.clientCount.toString())
+                .replace(/{{toolCount}}/g, space.toolCount.toString())
+                .replace(/{{tokenHash}}/g, space.tokenHash);
+              
+              // Handle the clients section
+              const clientsRegex = /{{#clients}}([\s\S]*?){{\/clients}}/;
+              const clientsMatch = spaceHtml.match(clientsRegex);
+              
+              if (clientsMatch) {
+                const clientTemplate = clientsMatch[1];
+                let clientsHtml = '';
+                
+                // For each client, apply the template
+                for (const client of space.clients) {
+                  let clientHtml = clientTemplate
+                    .replace(/{{id}}/g, client.id)
+                    .replace(/{{connectionStatus}}/g, client.connectionStatus)
+                    .replace(/{{toolCount}}/g, client.toolCount.toString());
+                  
+                  clientsHtml += clientHtml;
+                }
+                
+                // Replace the clients section
+                spaceHtml = spaceHtml.replace(clientsRegex, clientsHtml);
+              }
+              
+              apiSpacesHtml += spaceHtml;
+            }
+            
+            // Replace the API spaces section
+            html = html.replace(apiSpacesRegex, apiSpacesHtml);
+          }
           
           res.send(html);
         } catch (error) {
           logger.error(`Error generating admin dashboard: ${(error as Error).message}`);
           res.status(500).send('Error loading admin dashboard');
         }
-    });
+      }
+    );
 
     // Admin API endpoints
     this.app.get('/api/admin/stats',
@@ -390,7 +418,61 @@ export class ExpressRESTApiService implements RESTApiService {
       async (req: Request, res: Response) => {
         try {
           const data = await this.adminService.generateDashboardData();
-          res.json(data);
+          
+          // Generate API Spaces HTML
+          let apiSpacesHtml = '';
+          
+          // Read the template file to extract the API Space template
+          const templatePath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'static', 'admin-dashboard.html');
+          const html = fs.readFileSync(templatePath, 'utf8');
+          
+          // Extract the template between {{#apiSpaces}} and {{/apiSpaces}}
+          const apiSpacesRegex = /{{#apiSpaces}}([\s\S]*?){{\/apiSpaces}}/;
+          const apiSpacesMatch = html.match(apiSpacesRegex);
+          
+          if (apiSpacesMatch) {
+            const apiSpaceTemplate = apiSpacesMatch[1];
+            
+            // For each API space, apply the template
+            for (const space of data.apiSpaces) {
+              let spaceHtml = apiSpaceTemplate
+                .replace(/{{name}}/g, space.name || '')
+                .replace(/{{description}}/g, space.description || '')
+                .replace(/{{clientCount}}/g, space.clientCount.toString())
+                .replace(/{{toolCount}}/g, space.toolCount.toString())
+                .replace(/{{tokenHash}}/g, space.tokenHash);
+              
+              // Handle the clients section
+              const clientsRegex = /{{#clients}}([\s\S]*?){{\/clients}}/;
+              const clientsMatch = spaceHtml.match(clientsRegex);
+              
+              if (clientsMatch) {
+                const clientTemplate = clientsMatch[1];
+                let clientsHtml = '';
+                
+                // For each client, apply the template
+                for (const client of space.clients) {
+                  let clientHtml = clientTemplate
+                    .replace(/{{id}}/g, client.id)
+                    .replace(/{{connectionStatus}}/g, client.connectionStatus)
+                    .replace(/{{toolCount}}/g, client.toolCount.toString());
+                  
+                  clientsHtml += clientHtml;
+                }
+                
+                // Replace the clients section
+                spaceHtml = spaceHtml.replace(clientsRegex, clientsHtml);
+              }
+              
+              apiSpacesHtml += spaceHtml;
+            }
+          }
+          
+          // Add the HTML to the response
+          res.json({
+            ...data,
+            apiSpacesHtml
+          });
         } catch (error) {
           logger.error(`Error generating admin stats: ${(error as Error).message}`);
           res.status(500).json({ error: 'Failed to generate stats' });
@@ -735,7 +817,7 @@ export class ExpressRESTApiService implements RESTApiService {
    * Subscribe to WebSocket connection events
    */
   subscribeToConnectionEvents(wsServer: any): void {
-    wsServer.on('clientConnected', (clientId: string) => {
+    wsServer.onClientConnect((clientId: string) => {
       logger.info(`Client ${clientId} connected`);
       // Update client registration status
       const client = this.clientRegistrations.get(clientId);
@@ -745,7 +827,7 @@ export class ExpressRESTApiService implements RESTApiService {
       }
     });
 
-    wsServer.on('clientDisconnected', (clientId: string) => {
+    wsServer.onClientDisconnect((clientId: string) => {
       logger.info(`Client ${clientId} disconnected`);
       // Update client registration status
       const client = this.clientRegistrations.get(clientId);

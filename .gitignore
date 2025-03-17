@@ -38,3 +38,5 @@ coverage/
 .node_repl_history
 
 data/
+temp/
+

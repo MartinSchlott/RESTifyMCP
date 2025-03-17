@@ -41,7 +41,7 @@ The original specifications and instructions used to create this project are inc
 
 ## Development Timeline
 
-The V01, V02, and V03 versions were developed with AI assistance:
+The V01 and V02 versions were developed with AI assistance:
 
 ### V01 Initial Development
 - ~4 hours: Creating the specifications and instructions with Claude 3.7 Sonnet and ChatGPT-4o
@@ -54,120 +54,79 @@ The V01, V02, and V03 versions were developed with AI assistance:
 - ~10 minutes: Code implementation by AI coders
 - ~1 hour: Quality assurance and bug fixes
 
-### V03 Enhanced Client and Combo Mode
-- ~45 minutes: Creating the specifications and instructions with Claude 3.7 Sonnet
-- ~20 minutes: Code implementation by AI coders
-- ~1 hour: Debugging and quality assurance
+## V02 Release: Multi-Tenant Architecture with API Spaces
 
-## V03 Release: Enhanced Client and Combo Mode
-
-Version 3.0 introduces two major improvements to RESTifyMCP:
+Version 2.0 introduces several major improvements to RESTifyMCP:
 
 ### Key New Features
 
-1. **Multi-MCP-Server Client**: A single client can now connect to multiple MCP servers simultaneously
-2. **Enhanced Combo Mode**: Combo mode now fully supports multiple client connections
-3. **Improved Tool Management**: Better handling of client connections and disconnections
+1. **API Spaces**: A multi-tenant architecture that allows creating isolated API surfaces with separate authentication
+2. **Event-Based Connection Handling**: Immediate reactions to client connections/disconnections for improved reliability
+3. **Admin Dashboard**: A protected interface for monitoring and managing API Spaces
+4. **Secure OpenAPI Access**: Token-hash based URLs for sharing API documentation without exposing credentials
 
-### Multi-MCP-Server Client
+### API Spaces
 
-The new client architecture allows a single RESTifyMCP client to:
+API Spaces solve the architectural limitations mentioned in V01 by:
 
-- Start and manage multiple MCP servers
-- Aggregate tools from all connected servers
-- Present a unified set of tools to the RESTify server
-- Handle tool requests by routing to the appropriate MCP server
+- Creating isolated REST API surfaces with dedicated authentication tokens
+- Allowing client sharing between spaces without duplicating connections
+- Providing separate OpenAPI documentation for each space
+- Supporting granular access control to tools
 
-Example client configuration with multiple MCP servers:
-
-```json
-{
-  "mode": "client",
-  "client": {
-    "serverUrl": "http://localhost:3000",
-    "bearerToken": "client-token-1",
-    "mcpServers": [
-      {
-        "id": "filesystem",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"]
-      },
-      {
-        "id": "database",
-        "command": "node",
-        "args": ["./database-mcp-server.js"],
-        "env": {
-          "DB_HOST": "localhost",
-          "DB_USER": "user",
-          "DB_PASS": "password"
-        }
-      }
-    ]
-  }
-}
-```
-
-### Enhanced Combo Mode
-
-Combo mode now provides full support for multiple client connections:
-
-- The built-in client can connect to multiple MCP servers
-- External clients can connect to the same RESTifyMCP instance
-- All clients' tools are properly managed and exposed through API Spaces
-
-Example combo configuration with support for external clients:
+Example configuration with API Spaces:
 
 ```json
 {
-  "mode": "combo",
+  "mode": "server",
   "server": {
     "http": {
       "port": 3000,
       "host": "localhost",
-      "publicUrl": "http://localhost:3000"
+      "publicUrl": "https://example.com"
     },
     "apiSpaces": [
       {
-        "name": "default",
-        "description": "Default API Space",
-        "bearerToken": "api-token-123",
-        "allowedClientTokens": ["built-in-client-token", "external-client-token-1"]
+        "name": "public-api",
+        "description": "Public API with limited tools",
+        "bearerToken": "public-api-token-123",
+        "allowedClientTokens": ["client-token-1", "shared-client-token-3"]
       },
       {
-        "name": "admin",
-        "description": "Admin API Space with all tools",
-        "bearerToken": "admin-api-token-456",
-        "allowedClientTokens": ["built-in-client-token", "external-client-token-1", "external-client-token-2"]
+        "name": "internal-api",
+        "description": "Internal API with full access",
+        "bearerToken": "internal-api-token-456",
+        "allowedClientTokens": ["client-token-2", "shared-client-token-3"]
       }
     ],
     "admin": {
       "adminToken": "secure-admin-token-789"
     }
-  },
-  "client": {
-    "serverUrl": "http://localhost:3000",
-    "bearerToken": "built-in-client-token",
-    "mcpServers": [
-      {
-        "id": "filesystem",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
-      },
-      {
-        "id": "database",
-        "command": "node",
-        "args": ["./database-mcp-server.js"],
-        "env": {
-          "DB_HOST": "localhost",
-          "DB_USER": "user",
-          "DB_PASS": "password"
-        }
-      }
-    ]
-  },
-  "allowExternalClients": true
+  }
 }
 ```
+
+### Admin Dashboard
+
+V02 includes a secure admin dashboard that provides:
+
+- Real-time monitoring of connected clients
+- Overview of all API Spaces and their tools
+- Links to OpenAPI documentation for each space
+- System status and logs
+
+Access the dashboard at `/admin` after logging in with your admin token.
+
+### Secure OpenAPI Sharing
+
+OpenAPI documentation is now available through secure token-hash URLs:
+
+```
+https://your-server/openapi/{token-hash}/json
+https://your-server/openapi/{token-hash}/yaml
+```
+
+These URLs can be safely shared without exposing the actual API tokens.
 
 ## Recommended Deployment
 
@@ -217,7 +176,7 @@ In server mode, RESTifyMCP starts an HTTP server that provides a REST API. Clien
 
 #### Client Mode
 
-In client mode, RESTifyMCP starts one or more MCP servers via stdio and connects to a RESTify server to register their tools.
+In client mode, RESTifyMCP starts an MCP server via stdio and connects to a RESTify server to register its tools.
 
 ```json
 {
@@ -225,20 +184,15 @@ In client mode, RESTifyMCP starts one or more MCP servers via stdio and connects
   "client": {
     "serverUrl": "http://localhost:3000",
     "bearerToken": "client-token-1",
-    "mcpServers": [
-      {
-        "id": "main",
-        "command": "node",
-        "args": ["./path/to/mcp-server.js"]
-      }
-    ]
+    "mcpCommand": "node",
+    "mcpArgs": ["./path/to/mcp-server.js"]
   }
 }
 ```
 
 #### Combo Mode
 
-In combo mode, RESTifyMCP runs both server and client in a single process, with support for multiple MCP servers and external clients.
+In combo mode, RESTifyMCP runs both server and client in a single process.
 
 ```json
 {
@@ -254,7 +208,7 @@ In combo mode, RESTifyMCP runs both server and client in a single process, with 
         "name": "default",
         "description": "Default API Space",
         "bearerToken": "your-secret-token",
-        "allowedClientTokens": ["client-token-1", "external-client-token"]
+        "allowedClientTokens": ["client-token-1"]
       }
     ],
     "admin": {
@@ -264,21 +218,15 @@ In combo mode, RESTifyMCP runs both server and client in a single process, with 
   "client": {
     "serverUrl": "http://localhost:3000",
     "bearerToken": "client-token-1",
-    "mcpServers": [
-      {
-        "id": "main",
-        "command": "node",
-        "args": ["./path/to/mcp-server.js"]
-      }
-    ]
-  },
-  "allowExternalClients": true
+    "mcpCommand": "node",
+    "mcpArgs": ["./path/to/mcp-server.js"]
+  }
 }
 ```
 
-### Example: Multiple MCP Server Configuration
+### Example: Filesystem MCP Server
 
-Here's an example configuration for using RESTifyMCP with multiple MCP servers:
+Here's an example configuration for using RESTifyMCP with the filesystem MCP server:
 
 ```json
 {
@@ -304,29 +252,14 @@ Here's an example configuration for using RESTifyMCP with multiple MCP servers:
   "client": {
     "serverUrl": "http://localhost:3000",
     "bearerToken": "fs-client-token",
-    "mcpServers": [
-      {
-        "id": "filesystem",
-        "command": "npx",
-        "args": [
-          "-y", 
-          "@modelcontextprotocol/server-filesystem", 
-          "/path/to/allowed/directory1"
-        ]
-      },
-      {
-        "id": "python",
-        "command": "python",
-        "args": [
-          "-m", "mcp_server_python"
-        ],
-        "env": {
-          "PYTHONPATH": "/path/to/python/modules"
-        }
-      }
+    "mcpCommand": "npx",
+    "mcpArgs": [
+      "-y", 
+      "@modelcontextprotocol/server-filesystem", 
+      "/path/to/allowed/directory1",
+      "/path/to/allowed/directory2"
     ]
-  },
-  "allowExternalClients": true
+  }
 }
 ```
 

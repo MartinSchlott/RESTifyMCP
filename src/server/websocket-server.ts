@@ -390,6 +390,10 @@ export class WSServer implements WSServerInterface, ToolInvoker, WebSocketEventE
         case MessageType.TOOL_RESPONSE:
           this.handleToolResponse(message.payload as ToolResponseMessage);
           break;
+        case MessageType.PING:
+          // Respond with a pong message
+          this.sendPong(ws);
+          break;
         case MessageType.PONG:
           this.handlePong(connectionId);
           break;
