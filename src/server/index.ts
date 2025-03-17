@@ -55,7 +55,7 @@ export class RESTifyServer {
 
     // Initialize OpenAPI Generator
     this.openApiGenerator = new DefaultOpenApiGenerator(
-      `http://${config.server.http.host}:${config.server.http.port}`,
+      config.server.http.publicUrl || `http://${config.server.http.host}:${config.server.http.port}`,
       'RESTifyMCP API',
       '2.0.0'
     );

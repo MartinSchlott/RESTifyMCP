@@ -57,7 +57,7 @@ The V01, V02, and V03 versions were developed with AI assistance:
 ### V03 Enhanced Client and Combo Mode
 - ~45 minutes: Creating the specifications and instructions with Claude 3.7 Sonnet
 - ~20 minutes: Code implementation by AI coders
-- ~1 hour: Debugging and quality assurance
+- ~3 hour: Debugging and quality assurance because the coder AI thought it is a good idea to touch the whole code unecessary
 
 ## V03 Release: Enhanced Client and Combo Mode
 

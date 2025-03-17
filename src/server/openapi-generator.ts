@@ -77,26 +77,28 @@ export interface OpenApiGenerator {
  * Default implementation of OpenAPI Generator
  */
 export class DefaultOpenApiGenerator implements OpenApiGenerator {
-  private readonly baseUrl: string;
+  private readonly publicUrl: string;
   private readonly apiTitle: string;
   private readonly apiVersion: string;
   
   /**
    * Create a new OpenAPI generator
-   * @param baseUrl Base URL for the API
+   * @param publicUrl Public URL for the API
    * @param apiTitle API title
    * @param apiVersion API version
    */
   constructor(
-    baseUrl = 'http://localhost:3000',
+    publicUrl = 'http://localhost:3000',
     apiTitle = 'RESTifyMCP API',
     apiVersion = '1.0.0'
   ) {
-    this.baseUrl = baseUrl;
+    this.publicUrl = publicUrl;
     this.apiTitle = apiTitle;
     this.apiVersion = apiVersion;
     
-    logger.info('OpenAPI generator created');
+    logger.info('OpenAPIGenerator initialized');
+    logger.debug(`Using OpenAPI 3.1.0 format with publicUrl: ${publicUrl}`);
+    logger.debug('Formatting improvements: required fields as arrays, default arrays as [], descriptions truncated at 300 chars');
   }
   
   /**
@@ -115,6 +117,7 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
       : Array.from(clientRegistrations.values());
     
     logger.debug(`Generating OpenAPI spec for ${clientsArray.length} clients${apiSpace ? ` in API Space '${apiSpace.name}'` : ''}`);
+    logger.debug(`Using publicUrl: ${this.publicUrl}`);
     
     if (clientsArray.length > 0) {
       logger.debug(`Client IDs: ${clientsArray.map(c => c.clientId).join(', ')}`);
@@ -128,7 +131,7 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
     
     // Create base OpenAPI object
     const spec: OpenAPIObject = {
-      openapi: '3.0.0',
+      openapi: '3.1.0',
       info: {
         title: apiSpace ? `${this.apiTitle} - ${apiSpace.name}` : this.apiTitle,
         version: this.apiVersion,
@@ -136,12 +139,26 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
       },
       servers: [
         {
-          url: this.baseUrl,
+          url: this.publicUrl,
           description: 'RESTifyMCP Server'
         }
       ],
       paths: this.generatePaths(filteredClients),
       components: {
+        schemas: {
+          Error: {
+            type: 'object',
+            properties: {
+              error: {
+                type: 'string'
+              },
+              code: {
+                type: 'string'
+              }
+            },
+            required: ['error', 'code']
+          }
+        },
         securitySchemes: {
           bearerAuth: {
             type: 'http',
@@ -255,7 +272,7 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
       post: {
         summary: this.truncateDescription(tool.name),
         description: this.truncateDescription(tool.description),
-        operationId: `invoke${this.capitalizeFirstLetter(tool.name)}`,
+        operationId: tool.name,
         'x-openai-isConsequential': false,
         requestBody: {
           required: true,
@@ -270,12 +287,7 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
             description: 'Successful operation',
             content: {
               'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    result: this.generateResponses(tool.returns)
-                  }
-                }
+                schema: this.generateResponses(tool.returns)
               }
             }
           },
@@ -284,15 +296,7 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
             content: {
               'application/json': {
                 schema: {
-                  type: 'object',
-                  properties: {
-                    error: {
-                      type: 'string'
-                    },
-                    code: {
-                      type: 'string'
-                    }
-                  }
+                  $ref: '#/components/schemas/Error'
                 }
               }
             }
@@ -302,15 +306,7 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
             content: {
               'application/json': {
                 schema: {
-                  type: 'object',
-                  properties: {
-                    error: {
-                      type: 'string'
-                    },
-                    code: {
-                      type: 'string'
-                    }
-                  }
+                  $ref: '#/components/schemas/Error'
                 }
               }
             }
@@ -320,15 +316,7 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
             content: {
               'application/json': {
                 schema: {
-                  type: 'object',
-                  properties: {
-                    error: {
-                      type: 'string'
-                    },
-                    code: {
-                      type: 'string'
-                    }
-                  }
+                  $ref: '#/components/schemas/Error'
                 }
               }
             }
@@ -347,17 +335,20 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
    */
   private generateRequestBody(parameters: Record<string, unknown>): SchemaObject | null {
     if (!parameters || Object.keys(parameters).length === 0) {
-      return {
-        type: 'object',
-        properties: {},
-        additionalProperties: false
-      };
+      return null;
     }
+    
+    // Convert the MCP parameters to OpenAPI schema
+    // For now, just reuse as is with some sanitization
+    const sanitized = this.sanitizeSchema(parameters);
+    
+    // Ensure required field is an array if it exists
+    const required = this.ensureRequiredIsArray(sanitized.required);
     
     return {
       type: 'object',
-      properties: this.sanitizeSchema(parameters),
-      required: this.ensureRequiredIsArray(parameters.required)
+      properties: sanitized.properties || {},
+      required: required
     };
   }
   
@@ -370,11 +361,30 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
     if (!returns) {
       return {
         type: 'object',
-        description: 'Tool result'
+        properties: {
+          result: {
+            type: 'object',
+            description: this.truncateDescription('Generic result object')
+          }
+        }
       };
     }
     
-    return this.sanitizeSchema(returns);
+    // Sanitize the schema
+    const sanitized = this.sanitizeSchema(returns);
+    
+    // Ensure required field is an array if it exists
+    if (sanitized.required) {
+      sanitized.required = this.ensureRequiredIsArray(sanitized.required);
+    }
+    
+    return {
+      type: 'object',
+      properties: {
+        result: sanitized
+      },
+      required: ['result']
+    };
   }
   
   /**
@@ -383,79 +393,67 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
    * @returns Sanitized schema
    */
   private sanitizeSchema(schema: unknown): Record<string, any> {
-    if (schema === null || schema === undefined) {
+    if (typeof schema !== 'object' || schema === null) {
       return { type: 'object' };
     }
     
-    if (typeof schema !== 'object') {
-      return { type: typeof schema };
-    }
-    
+    // Remove any keys that start with '$' (like $schema, $ref, etc.)
+    // to avoid conflicts with OpenAPI's special keywords
     const result: Record<string, any> = {};
     
-    // Handle array type
-    if (Array.isArray(schema)) {
-      result.type = 'array';
-      
-      if (schema.length > 0) {
-        result.items = this.sanitizeSchema(schema[0]);
-      } else {
-        result.items = { type: 'object' };
-      }
-      
-      return result;
-    }
-    
-    // Handle object type
-    const schemaObj = schema as Record<string, any>;
-    
-    // Check if it's a type definition
-    if ('type' in schemaObj) {
-      result.type = schemaObj.type;
-      
-      if (schemaObj.description) {
-        result.description = this.truncateDescription(schemaObj.description);
-      }
-      
-      // Handle properties
-      if (schemaObj.properties && typeof schemaObj.properties === 'object') {
-        result.properties = {};
-        
-        for (const [key, value] of Object.entries(schemaObj.properties)) {
-          result.properties[key] = this.sanitizeSchema(value);
+    // First pass: Process all properties except defaults
+    for (const [key, value] of Object.entries(schema as Record<string, any>)) {
+      if (!key.startsWith('$') && key !== 'default') {
+        if (key === 'required') {
+          // Standardize required fields as arrays
+          result[key] = this.ensureRequiredIsArray(value);
+        } else if (key === 'enum') {
+          // Handle enum values - ensure they are arrays
+          result[key] = this.ensureEnumIsArray(value);
+        } else if (key === 'description' && typeof value === 'string') {
+          // Truncate descriptions that are too long
+          result[key] = this.truncateDescription(value);
+        } else if (key === 'items' && typeof value === 'object' && value !== null) {
+          // Special handling for items property in array types
+          result[key] = this.sanitizeSchema(value);
+        } else if (typeof value === 'object' && value !== null) {
+          result[key] = this.sanitizeSchema(value);
+        } else {
+          result[key] = value;
         }
       }
-      
-      // Handle required fields
-      if (schemaObj.required) {
-        result.required = this.ensureRequiredIsArray(schemaObj.required);
-      }
-      
-      // Handle enum
-      if (schemaObj.enum && Array.isArray(schemaObj.enum)) {
-        result.enum = schemaObj.enum;
-      }
-      
-      // Handle default value
-      if ('default' in schemaObj) {
-        result.default = this.ensureDefaultValueMatchesType(
-          schemaObj.default,
-          result.type
-        );
-      }
-      
-      return result;
     }
     
-    // Handle plain object
-    result.type = 'object';
-    result.properties = {};
-    
-    for (const [key, value] of Object.entries(schemaObj)) {
-      result.properties[key] = this.sanitizeSchema(value);
+    // Second pass: Process default values now that we know the type
+    if ('default' in (schema as Record<string, any>)) {
+      const defaultValue = (schema as Record<string, any>).default;
+      result.default = this.ensureDefaultValueMatchesType(defaultValue, result.type);
     }
     
     return result;
+  }
+  
+  /**
+   * Ensure enum is an array
+   * @param enumValue Enum value
+   * @returns Array of enum values
+   */
+  private ensureEnumIsArray(enumValue: unknown): unknown[] {
+    if (Array.isArray(enumValue)) {
+      return enumValue;
+    }
+    
+    if (typeof enumValue === 'object' && enumValue !== null) {
+      // Convert object enum to array of values
+      return Object.values(enumValue);
+    }
+    
+    if (enumValue === null || enumValue === undefined) {
+      return [];
+    }
+    
+    // Single value becomes a one-element array
+    return [enumValue];
   }
   
   /**
