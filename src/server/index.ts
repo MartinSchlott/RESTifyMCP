@@ -42,7 +42,10 @@ export class RESTifyServer {
     this.clientRegistrations = new Map();
 
     // Initialize API Space Manager
-    this.apiSpaceManager = new DefaultAPISpaceManager(config.server.apiSpaces);
+    this.apiSpaceManager = new DefaultAPISpaceManager(
+      config.server.apiSpaces,
+      this.clientRegistrations
+    );
 
     // Initialize Auth Service
     this.authService = new BearerAuthService(

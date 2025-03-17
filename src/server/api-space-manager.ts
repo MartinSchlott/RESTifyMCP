@@ -7,7 +7,7 @@ import { APISpace, ClientRegistration } from '../shared/types.js';
 import { ConsoleLogger, LogLevel } from '../shared/utils.js';
 
 // Set up logger
-const logger = new ConsoleLogger('APISpaceManager', LogLevel.INFO);
+const logger = new ConsoleLogger('APISpaceManager', LogLevel.DEBUG);
 
 /**
  * API Space Manager interface
@@ -75,6 +75,7 @@ export class DefaultAPISpaceManager implements APISpaceManager {
    */
   constructor(apiSpaces: APISpace[] = [], clientRegistrations: Map<string, ClientRegistration> = new Map()) {
     this.clientRegistrations = clientRegistrations;
+    logger.debug(`APISpaceManager initialized with ${clientRegistrations.size} client registrations`);
     this.initialize(apiSpaces);
   }
   
@@ -89,37 +90,45 @@ export class DefaultAPISpaceManager implements APISpaceManager {
     
     // Process each API Space
     for (const space of apiSpaces) {
-      // Store space by name
+      // Store API Space by name
       this.spaceNameToSpace.set(space.name, space);
       
-      // Store token to name mapping
+      // Store API Space token to name mapping
       this.spaceTokenToName.set(space.bearerToken, space.name);
       
-      // Process client tokens
+      // Associate client tokens with this API Space
       for (const clientToken of space.allowedClientTokens) {
-        // Get or create the set of spaces for this client
+        // Get or create set of spaces for this client token
         let spaces = this.clientTokenToSpaces.get(clientToken);
         if (!spaces) {
           spaces = new Set<string>();
           this.clientTokenToSpaces.set(clientToken, spaces);
         }
         
-        // Add this space to the client's spaces
+        // Add this space to the set
         spaces.add(space.name);
+        
+        logger.debug(`Associated client token ${clientToken} with API Space ${space.name}`);
       }
     }
     
-    logger.info(`Initialized with ${apiSpaces.length} API Spaces`);
+    logger.debug(`Initialized with ${apiSpaces.length} API Spaces and ${this.clientTokenToSpaces.size} client tokens`);
+    logger.debug(`Client token to spaces map: ${JSON.stringify(Array.from(this.clientTokenToSpaces.entries()))}`);
   }
   
   /**
    * Get all API Spaces a client belongs to
    */
   getSpacesForClient(clientToken: string): APISpace[] {
+    logger.debug(`Getting spaces for client token: ${clientToken}`);
+    
     const spaceNames = this.clientTokenToSpaces.get(clientToken);
     if (!spaceNames) {
+      logger.debug(`No spaces found for client token: ${clientToken}`);
       return [];
     }
+    
+    logger.debug(`Found spaces for client token: ${Array.from(spaceNames).join(', ')}`);
     
     return Array.from(spaceNames)
       .map(name => this.spaceNameToSpace.get(name))
@@ -145,17 +154,24 @@ export class DefaultAPISpaceManager implements APISpaceManager {
     // Get the space by name
     const space = this.spaceNameToSpace.get(spaceName);
     if (!space) {
+      logger.debug(`API Space ${spaceName} not found`);
       return false;
     }
     
-    // For each client registration, check if the client ID matches and if the bearer token is allowed
-    for (const [id, client] of this.clientRegistrations.entries()) {
-      if (id === clientId && space.allowedClientTokens.includes(client.bearerToken)) {
-        return true;
-      }
+    // Get the client registration
+    const client = this.clientRegistrations.get(clientId);
+    if (!client) {
+      logger.debug(`Client ${clientId} not found in registrations`);
+      return false;
     }
     
-    return false;
+    // Check if the client's bearer token is allowed in this space
+    const isAllowed = space.allowedClientTokens.includes(client.bearerToken);
+    
+    logger.debug(`Client ${clientId} with token ${client.bearerToken} is ${isAllowed ? 'allowed' : 'not allowed'} in space ${spaceName}`);
+    logger.debug(`Space ${spaceName} allowed tokens: ${JSON.stringify(space.allowedClientTokens)}`);
+    
+    return isAllowed;
   }
   
   /**

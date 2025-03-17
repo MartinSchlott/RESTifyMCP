@@ -8,7 +8,7 @@ import { APISpace, ClientRegistration, MCPToolDefinition } from '../shared/types
 import { ConsoleLogger, LogLevel } from '../shared/utils.js';
 
 // Set up logger
-const logger = new ConsoleLogger('OpenAPIGenerator', LogLevel.INFO);
+const logger = new ConsoleLogger('OpenAPIGenerator', LogLevel.DEBUG);
 
 // Type definitions for OpenAPI types
 type OpenAPIObject = {
@@ -114,6 +114,13 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
       ? clientRegistrations
       : Array.from(clientRegistrations.values());
     
+    logger.debug(`Generating OpenAPI spec for ${clientsArray.length} clients${apiSpace ? ` in API Space '${apiSpace.name}'` : ''}`);
+    
+    if (clientsArray.length > 0) {
+      logger.debug(`Client IDs: ${clientsArray.map(c => c.clientId).join(', ')}`);
+      logger.debug(`Client tokens: ${clientsArray.map(c => c.bearerToken).join(', ')}`);
+    }
+    
     // Filter clients by connection status and API Space
     const filteredClients = this.filterClientsForApiSpace(clientsArray, apiSpace);
     
@@ -185,14 +192,24 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
     clients: ClientRegistration[],
     apiSpace?: APISpace
   ): ClientRegistration[] {
+    logger.debug(`Filtering ${clients.length} clients for API Space ${apiSpace?.name || 'all'}`);
+    
     // First filter by connection status - ONLY include connected clients
     let filteredClients = clients.filter(client => client.connectionStatus === 'connected');
+    logger.debug(`After connection status filter: ${filteredClients.length} clients`);
     
     // Then filter by API Space if provided
     if (apiSpace) {
-      filteredClients = filteredClients.filter(client => 
-        apiSpace.allowedClientTokens.includes(client.bearerToken)
-      );
+      logger.debug(`Filtering by API Space: ${apiSpace.name}`);
+      logger.debug(`API Space allowed tokens: ${JSON.stringify(apiSpace.allowedClientTokens)}`);
+      
+      filteredClients = filteredClients.filter(client => {
+        const isAllowed = apiSpace.allowedClientTokens.includes(client.bearerToken);
+        logger.debug(`Client ${client.clientId} with token ${client.bearerToken} is ${isAllowed ? 'allowed' : 'not allowed'} in space ${apiSpace.name}`);
+        return isAllowed;
+      });
+      
+      logger.debug(`After API Space filter: ${filteredClients.length} clients`);
     }
     
     return filteredClients;
@@ -204,16 +221,24 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
    * @returns Paths object
    */
   private generatePaths(clients: ClientRegistration[]): Record<string, any> {
+    logger.debug(`Generating paths for ${clients.length} clients`);
+    
     const paths: Record<string, any> = {};
     
     // For each client
     for (const client of clients) {
+      logger.debug(`Processing client ${client.clientId} with ${client.tools.length} tools`);
+      
       // For each tool in the client
       for (const tool of client.tools) {
+        logger.debug(`Adding path for tool ${tool.name}`);
+        
         // Generate path for this tool
         paths[`/api/tools/${tool.name}`] = this.generatePathForTool(client.clientId, tool);
       }
     }
+    
+    logger.debug(`Generated ${Object.keys(paths).length} paths`);
     
     return paths;
   }

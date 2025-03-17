@@ -20,7 +20,7 @@ import { Server } from 'http';
 import { AuthService } from './auth.js';
 
 // Set up logger
-const logger = new ConsoleLogger('WebSocketServer', LogLevel.INFO);
+const logger = new ConsoleLogger('WebSocketServer', LogLevel.DEBUG);
 
 /**
  * WebSocket Event Emitter interface
@@ -423,31 +423,44 @@ export class WSServer implements WSServerInterface, ToolInvoker, WebSocketEventE
       // Retrieve the bearer token from connection or payload
       const bearerToken = (ws as any).bearerToken || payload.bearerToken;
       
+      logger.debug(`Registering client with token: ${bearerToken}`);
+      
       // Validate token against client auth token (legacy validation)
       if (bearerToken !== this.clientAuthToken) {
+        logger.debug(`Client token does not match legacy client auth token, checking API Space membership`);
+        
         // Check if the token is allowed in any API Space
         let isAllowedInAnySpace = false;
         
         // Get all API Spaces
         const apiSpaces = this.authService.getAPISpaceManager().getAllSpaces();
+        logger.debug(`Found ${apiSpaces.length} API Spaces`);
         
         // Check if the client token is allowed in any API Space
         for (const space of apiSpaces) {
+          logger.debug(`Checking if token is allowed in space ${space.name}`);
+          logger.debug(`Space ${space.name} allowed tokens: ${JSON.stringify(space.allowedClientTokens)}`);
+          
           if (space.allowedClientTokens.includes(bearerToken)) {
             isAllowedInAnySpace = true;
+            logger.debug(`Token is allowed in space ${space.name}`);
             break;
           }
         }
         
         if (!isAllowedInAnySpace) {
+          logger.debug(`Token is not allowed in any API Space`);
           throw new RESTifyMCPError('Client token not allowed in any API Space', 'INVALID_TOKEN');
         }
         
         logger.info(`Client token validated through API Space membership`);
+      } else {
+        logger.debug(`Client token matches legacy client auth token`);
       }
       
       // Generate client ID from token if not provided
       const clientId = payload.clientId || generateClientIdFromToken(bearerToken);
+      logger.debug(`Client ID: ${clientId}`);
       
       // Check if client already exists
       const existingClient = this.clientRegistrations.get(clientId);

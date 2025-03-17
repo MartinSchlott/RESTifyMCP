@@ -18,7 +18,7 @@ import { AdminService } from './admin-service.js';
 import cookieParser from 'cookie-parser';
 
 // Set up logger
-const logger = new ConsoleLogger('RESTApiService', LogLevel.INFO);
+const logger = new ConsoleLogger('RESTApiService', LogLevel.DEBUG);
 
 /**
  * Interface for handling tool invocations
@@ -549,11 +549,24 @@ export class ExpressRESTApiService implements RESTApiService {
   private getOpenApiSpecForSpace(apiSpace: APISpace): Record<string, any> {
     // Filter client registrations to only include clients allowed in this API Space
     const filteredRegistrations = new Map<string, ClientRegistration>();
+    
+    logger.debug(`Filtering clients for API Space ${apiSpace.name}`);
+    logger.debug(`Total clients: ${this.clientRegistrations.size}`);
+    logger.debug(`Client IDs: ${Array.from(this.clientRegistrations.keys()).join(', ')}`);
+    
     for (const [clientId, registration] of this.clientRegistrations.entries()) {
-      if (this.apiSpaceManager.isClientAllowedInSpace(clientId, apiSpace.name)) {
+      logger.debug(`Checking if client ${clientId} with token ${registration.bearerToken} is allowed in space ${apiSpace.name}`);
+      logger.debug(`Space ${apiSpace.name} allowed tokens: ${JSON.stringify(apiSpace.allowedClientTokens)}`);
+      
+      const isAllowed = this.apiSpaceManager.isClientAllowedInSpace(clientId, apiSpace.name);
+      logger.debug(`Client ${clientId} is ${isAllowed ? 'allowed' : 'not allowed'} in space ${apiSpace.name}`);
+      
+      if (isAllowed) {
         filteredRegistrations.set(clientId, registration);
       }
     }
+    
+    logger.debug(`Filtered clients: ${filteredRegistrations.size}`);
     
     return this.openApiGenerator.generateSpec(filteredRegistrations, apiSpace);
   }
