@@ -22,6 +22,7 @@ export interface AuthService {
   validateAdminToken(token: string): boolean;
   getTokenHash(token: string): string;
   getAPISpaceByTokenHash(hash: string): APISpace | null;
+  getAPISpaceManager(): APISpaceManager;
 }
 
 /**
@@ -199,5 +200,12 @@ export class BearerAuthService implements AuthService {
     (req as any).bearerToken = token;
     
     next();
+  }
+
+  /**
+   * Get the API Space Manager
+   */
+  getAPISpaceManager(): APISpaceManager {
+    return this.apiSpaceManager;
   }
 } 

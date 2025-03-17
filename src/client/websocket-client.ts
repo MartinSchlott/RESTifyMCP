@@ -105,19 +105,29 @@ export class WSClient implements WSClientInterface {
       this.reconnectAttempts = 0;
     }
     
-    // Add the bearer token to the WebSocket connection
-    const wsUrl = new URL(this.serverUrl);
-    wsUrl.searchParams.append('token', this.bearerToken);
-    
     return new Promise<void>((resolve, reject) => {
-      logger.info(`Connecting to WebSocket server: ${wsUrl.toString()}`);
+      logger.info(`Connecting to WebSocket server: ${this.serverUrl}`);
       
       try {
-        this.ws = new WebSocket(wsUrl.toString());
+        // Create WebSocket with headers for authentication
+        this.ws = new WebSocket(this.serverUrl, {
+          headers: {
+            'Authorization': `Bearer ${this.bearerToken}`
+          }
+        });
         
         // Set up connection handler
         this.ws.on('open', () => {
           logger.info('WebSocket connection established');
+          
+          // Capture reconnecting state before resetting
+          const wasReconnecting = this.isReconnecting;
+          
+          // Determine if this is initial connection or reconnection for logging
+          if (wasReconnecting) {
+            logger.info('Successfully reconnected to server');
+          }
+          
           this.reconnectAttempts = 0;
           this.isReconnecting = false;
           
@@ -127,7 +137,14 @@ export class WSClient implements WSClientInterface {
           // Register tools if we have any
           if (this.registeredTools.length > 0) {
             this.registerTools(this.registeredTools)
-              .then(() => resolve())
+              .then(() => {
+                if (wasReconnecting) {
+                  logger.info(`Successfully re-registered ${this.registeredTools.length} tools after connection`);
+                } else {
+                  logger.info(`Registered ${this.registeredTools.length} tools during initial connection`);
+                }
+                resolve();
+              })
               .catch(reject);
           } else {
             resolve();
@@ -496,6 +513,17 @@ export class WSClient implements WSClientInterface {
     this.reconnectTimeout = setTimeout(async () => {
       try {
         await this.connect();
+        
+        // Additional check to ensure tools are registered after a successful reconnection
+        if (this.ws && this.ws.readyState === WebSocket.OPEN && this.registeredTools.length > 0) {
+          logger.info(`Reconnection successful, ensuring tools are re-registered`);
+          try {
+            await this.registerTools(this.registeredTools);
+            logger.info(`Successfully re-registered ${this.registeredTools.length} tools after reconnection`);
+          } catch (registerError) {
+            logger.error(`Failed to re-register tools after reconnection: ${(registerError as Error).message}`, registerError as Error);
+          }
+        }
       } catch (error) {
         logger.error('Reconnection attempt failed', error as Error);
         this.isReconnecting = false;

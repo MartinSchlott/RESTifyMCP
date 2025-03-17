@@ -312,6 +312,15 @@ export class WSServer implements WSServerInterface, ToolInvoker, WebSocketEventE
     
     logger.info(`New WebSocket connection: ${connectionId}`);
     
+    // Extract authorization header
+    const authHeader = request.headers.authorization;
+    
+    // Store auth token in the WebSocket connection for later use
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+      (ws as any).bearerToken = token;
+    }
+    
     // Set up event handlers
     ws.on('message', (data) => this.handleMessage(ws, connectionId, data as Buffer));
     ws.on('close', () => this.handleClose(connectionId));
@@ -407,13 +416,34 @@ export class WSServer implements WSServerInterface, ToolInvoker, WebSocketEventE
         throw new RESTifyMCPError('Invalid registration payload', 'INVALID_PAYLOAD');
       }
       
-      // Validate token
-      if (payload.bearerToken !== this.clientAuthToken) {
-        throw new RESTifyMCPError('Invalid bearer token', 'INVALID_TOKEN');
+      // Retrieve the bearer token from connection or payload
+      const bearerToken = (ws as any).bearerToken || payload.bearerToken;
+      
+      // Validate token against client auth token (legacy validation)
+      if (bearerToken !== this.clientAuthToken) {
+        // Check if the token is allowed in any API Space
+        let isAllowedInAnySpace = false;
+        
+        // Get all API Spaces
+        const apiSpaces = this.authService.getAPISpaceManager().getAllSpaces();
+        
+        // Check if the client token is allowed in any API Space
+        for (const space of apiSpaces) {
+          if (space.allowedClientTokens.includes(bearerToken)) {
+            isAllowedInAnySpace = true;
+            break;
+          }
+        }
+        
+        if (!isAllowedInAnySpace) {
+          throw new RESTifyMCPError('Client token not allowed in any API Space', 'INVALID_TOKEN');
+        }
+        
+        logger.info(`Client token validated through API Space membership`);
       }
       
       // Generate client ID from token if not provided
-      const clientId = payload.clientId || generateClientIdFromToken(payload.bearerToken);
+      const clientId = payload.clientId || generateClientIdFromToken(bearerToken);
       
       // Check if client already exists
       const existingClient = this.clientRegistrations.get(clientId);
@@ -431,12 +461,15 @@ export class WSServer implements WSServerInterface, ToolInvoker, WebSocketEventE
             logger.error(`Error closing old connection for client ${clientId}: ${(error as Error).message}`);
           }
         }
+      } else if (existingClient) {
+        // This is a reconnection for an existing client
+        logger.info(`Client ${clientId} is reconnecting with a new connection ID: ${connectionId}`);
       }
       
       // Create or update client registration
       const client: ClientRegistration = {
         clientId,
-        bearerToken: payload.bearerToken,
+        bearerToken: bearerToken,
         tools: payload.tools,
         connectionStatus: 'connected',
         lastSeen: new Date(),
