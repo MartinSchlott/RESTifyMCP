@@ -9,7 +9,7 @@ import { ConsoleLogger, LogLevel, RESTifyMCPError, timeout } from '../shared/uti
 
 // Import MCP SDK components with .js extension for ESM compatibility
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 // Set up logger
 const logger = new ConsoleLogger('MCPStdioClient', LogLevel.INFO);
@@ -31,6 +31,8 @@ export interface MCPStdioInterface {
 export class MCPStdioClient implements MCPStdioInterface {
   private readonly command: string;
   private readonly args: string[];
+  private readonly env?: Record<string, string>;
+  private readonly cwd?: string;
   private process: ChildProcess | null = null;
   private client: Client | null = null;
   private transport: StdioClientTransport | null = null;
@@ -43,10 +45,19 @@ export class MCPStdioClient implements MCPStdioInterface {
    * Create a new MCP Stdio Client
    * @param command Command to run MCP server
    * @param args Arguments for MCP server command
+   * @param env Optional environment variables
+   * @param cwd Optional working directory
    */
-  constructor(command: string, args: string[] = []) {
+  constructor(
+    command: string, 
+    args: string[] = [], 
+    env?: Record<string, string>,
+    cwd?: string
+  ) {
     this.command = command;
     this.args = args;
+    this.env = env;
+    this.cwd = cwd;
     logger.info(`MCPStdioClient created for command: ${command} ${args.join(' ')}`);
   }
 
@@ -62,14 +73,16 @@ export class MCPStdioClient implements MCPStdioInterface {
     logger.info(`Starting MCP server: ${this.command} ${this.args.join(' ')}`);
     
     try {
+      // Prepare environment variables using SDK's getDefaultEnvironment
+      const defaultEnv = getDefaultEnvironment();
+      const combinedEnv = this.env ? { ...defaultEnv, ...this.env } : defaultEnv;
+      
       // Create a transport that communicates with the MCP server via stdio
       this.transport = new StdioClientTransport({
         command: this.command,
         args: this.args,
-        // Safely handle environment variables
-        env: Object.fromEntries(
-          Object.entries(process.env).filter(([_, v]) => v !== undefined) as [string, string][]
-        )
+        env: combinedEnv,
+        cwd: this.cwd
       });
       
       // Store process reference for monitoring

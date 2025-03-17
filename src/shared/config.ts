@@ -41,20 +41,30 @@ const serverConfigSchema = z.object({
   logging: loggingConfigSchema
 });
 
-// Zod schema for client configuration
+// Zod schema for MCP Server configuration
+const mcpServerConfigSchema = z.object({
+  id: z.string().min(1),
+  command: z.string().min(1),
+  args: z.array(z.string()).default([]),
+  env: z.record(z.string()).optional(),
+  cwd: z.string().optional()
+});
+
+// Zod schema for client configuration - updated to support multi-server
 const clientConfigSchema = z.object({
   serverUrl: z.string().url(),
   bearerToken: z.string().min(32),
-  mcpCommand: z.string(),
-  mcpArgs: z.array(z.string()).default([])
+  mcpCommand: z.string().optional(),
+  mcpArgs: z.array(z.string()).optional().default([]),
+  mcpServers: z.array(mcpServerConfigSchema).optional()
 }).refine(
   (data) => {
-    // Ensure bearerToken is defined and not empty
-    return !!data.bearerToken && data.bearerToken.length >= 32;
+    // Either mcpCommand or mcpServers must be provided
+    return (data.mcpCommand !== undefined) || (data.mcpServers !== undefined && data.mcpServers.length > 0);
   },
   {
-    message: "Bearer token must be defined and at least 32 characters long",
-    path: ['bearerToken']
+    message: "Either mcpCommand or mcpServers must be provided",
+    path: ["mcpCommand", "mcpServers"],
   }
 );
 
@@ -62,6 +72,14 @@ const clientConfigSchema = z.object({
 type ConfigWithMode = {
   mode: 'server' | 'client' | 'combo';
 };
+
+// Zod schema for combo configuration - updated for enhanced combo mode
+const comboConfigSchema = z.object({
+  mode: z.literal('combo'),
+  server: serverConfigSchema,
+  client: clientConfigSchema,
+  allowExternalClients: z.boolean().optional().default(true)
+});
 
 // Zod schema for complete configuration with refined validation
 const configSchema = z.object({

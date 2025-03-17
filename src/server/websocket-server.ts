@@ -451,25 +451,14 @@ export class WSServer implements WSServerInterface, ToolInvoker, WebSocketEventE
         // Client is already connected with a different connection
         logger.warn(`Client ${clientId} is already connected with a different connection, disconnecting old connection`);
         
-        // Get old connection
-        const oldConnection = this.clientConnections.get(existingClient.connectionId!);
-        if (oldConnection) {
-          try {
-            // Close old connection
-            oldConnection.close(1000, 'Client reconnected from another connection');
-          } catch (error) {
-            logger.error(`Error closing old connection for client ${clientId}: ${(error as Error).message}`);
-          }
-        }
-      } else if (existingClient) {
-        // This is a reconnection for an existing client
-        logger.info(`Client ${clientId} is reconnecting with a new connection ID: ${connectionId}`);
+        // Close old connection more gracefully
+        this.disconnectClient(existingClient.connectionId!);
       }
       
       // Create or update client registration
-      const client: ClientRegistration = {
+      const registration: ClientRegistration = {
         clientId,
-        bearerToken: bearerToken,
+        bearerToken,
         tools: payload.tools,
         connectionStatus: 'connected',
         lastSeen: new Date(),
@@ -477,21 +466,42 @@ export class WSServer implements WSServerInterface, ToolInvoker, WebSocketEventE
       };
       
       // Store client registration
-      this.clientRegistrations.set(clientId, client);
+      this.clientRegistrations.set(clientId, registration);
       
-      // Store client ID in connection
-      (ws as any).clientId = clientId;
+      // Store connection ID to client ID mapping
+      this.clientConnections.set(connectionId, ws);
       
       logger.info(`Client registered: ${clientId} with ${payload.tools.length} tools`);
       
-      // Emit client connect event
+      // Notify listeners about new client connection
       this.emitClientConnect(clientId);
-      
-      // Send pong to acknowledge registration
-      this.sendPong(ws);
     } catch (error) {
       logger.error(`Error registering client: ${(error as Error).message}`, error as Error);
-      this.sendError(ws, `Error registering client: ${(error as Error).message}`, 'REGISTRATION_ERROR');
+      this.sendError(ws, `Registration failed: ${(error as Error).message}`, 'REGISTRATION_ERROR');
+      
+      // Close connection on registration error
+      try {
+        ws.close(1008, `Registration failed: ${(error as Error).message}`);
+      } catch (closeError) {
+        logger.error(`Error closing connection: ${(closeError as Error).message}`);
+      }
+    }
+  }
+  
+  /**
+   * Disconnect a client by connection ID
+   * @param connectionId Connection ID to disconnect
+   */
+  private disconnectClient(connectionId: string): void {
+    // Get old connection
+    const oldConnection = this.clientConnections.get(connectionId);
+    if (oldConnection) {
+      try {
+        // Close old connection
+        oldConnection.close(1000, 'Client reconnected from another connection');
+      } catch (error) {
+        logger.error(`Error closing connection: ${(error as Error).message}`);
+      }
     }
   }
   

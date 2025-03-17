@@ -9,7 +9,7 @@
 import { Command } from 'commander';
 import { ConsoleLogger, LogLevel } from './shared/utils.js';
 import { configService } from './shared/config.js';
-import { ValidatedConfig } from './shared/types.js';
+import { ServerConfig, ValidatedConfig } from './shared/types.js';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -84,8 +84,8 @@ async function startMode(config: ValidatedConfig): Promise<void> {
   switch (config.mode) {
     case 'server': {
       logger.info('Starting server mode');
-      const { default: RESTifyServer } = await import('./server/index.js');
-      const server = new RESTifyServer(config);
+      const { RESTifyServer } = await import('./server/index.js');
+      const server = new RESTifyServer(config as ValidatedConfig & { server: ServerConfig });
       await server.start();
       activeComponent = server; // Store reference for graceful shutdown
       break;

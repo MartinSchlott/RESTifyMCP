@@ -1,0 +1,23 @@
+{
+  "mode": "client",
+  "client": {
+    "serverUrl": "http://localhost:3000",
+    "bearerToken": "external-client-token-12345678901234567890ab",
+    "mcpServers": [
+      {
+        "id": "external-tools",
+        "command": "node",
+        "args": ["./external-mcp-server.js"]
+      },
+      {
+        "id": "image-processor",
+        "command": "python",
+        "args": ["image_processor_mcp.py"],
+        "env": {
+          "PYTHONPATH": "./lib",
+          "MODEL_PATH": "./models"
+        }
+      }
+    ]
+  }
+} 

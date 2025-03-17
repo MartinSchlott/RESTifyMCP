@@ -4,10 +4,11 @@
  * This module implements the client mode of RESTifyMCP.
  */
 
-import { ValidatedConfig } from '../shared/types.js';
+import { ClientConfig, MCPServerConfig, MCPToolDefinition, ValidatedConfig } from '../shared/types.js';
 import { ConsoleLogger, LogLevel, RESTifyMCPError, generateClientIdFromToken } from '../shared/utils.js';
 import { MCPStdioClient } from './mcp-stdio.js';
 import { WSClient } from './websocket-client.js';
+import { MCPManager } from './mcp-manager.js';
 
 // Set up logger
 const logger = new ConsoleLogger('Client', LogLevel.INFO);
@@ -19,6 +20,7 @@ export default class RESTifyClient {
   private readonly config: ValidatedConfig;
   private readonly clientId: string;
   private mcpClient: MCPStdioClient | null = null;
+  private mcpManager: MCPManager | null = null;
   private wsClient: WSClient | null = null;
   
   /**
@@ -49,18 +51,9 @@ export default class RESTifyClient {
         throw new RESTifyMCPError('Client configuration required', 'CONFIG_ERROR');
       }
       
-      // Create MCP client
-      this.mcpClient = new MCPStdioClient(
-        this.config.client.mcpCommand,
-        this.config.client.mcpArgs
-      );
-      
-      // Start MCP server
-      await this.mcpClient.startMCPServer();
-      
-      // Get tools from MCP server
-      const tools = await this.mcpClient.getAvailableTools();
-      logger.info(`Discovered ${tools.length} tools from MCP server`);
+      // Get tools from MCP server(s)
+      const tools = await this.initializeMCPServers(this.config.client);
+      logger.info(`Discovered ${tools.length} tools from MCP server(s)`);
       
       // Create WebSocket client
       this.wsClient = new WSClient(
@@ -71,12 +64,16 @@ export default class RESTifyClient {
       
       // Set tool handler
       this.wsClient.setToolHandler(async (toolName, args, requestId) => {
-        if (!this.mcpClient) {
-          throw new RESTifyMCPError('MCP client not initialized', 'MCP_NOT_INITIALIZED');
-        }
-        
         logger.info(`Invoking tool ${toolName} (${requestId})`);
-        return this.mcpClient.callTool(toolName, args);
+        
+        // Use MCPManager if available, otherwise fall back to single MCPClient
+        if (this.mcpManager) {
+          return this.mcpManager.callTool(toolName, args);
+        } else if (this.mcpClient) {
+          return this.mcpClient.callTool(toolName, args);
+        } else {
+          throw new RESTifyMCPError('No MCP client or manager available', 'MCP_NOT_INITIALIZED');
+        }
       });
       
       // Connect to WebSocket server
@@ -90,6 +87,42 @@ export default class RESTifyClient {
       logger.error('Failed to start RESTifyClient', error as Error);
       await this.cleanup();
       throw error;
+    }
+  }
+  
+  /**
+   * Initialize MCP servers based on configuration
+   * @param clientConfig Client configuration
+   * @returns List of available tools
+   */
+  private async initializeMCPServers(clientConfig: ClientConfig): Promise<MCPToolDefinition[]> {
+    // Check if we have multi-server configuration
+    if (clientConfig.mcpServers && clientConfig.mcpServers.length > 0) {
+      logger.info(`Initializing ${clientConfig.mcpServers.length} MCP servers`);
+      
+      // Create and initialize MCPManager
+      this.mcpManager = new MCPManager(clientConfig.mcpServers);
+      await this.mcpManager.initialize();
+      
+      // Get all tools from the manager
+      return this.mcpManager.getAllTools();
+    } else if (clientConfig.mcpCommand) {
+      // Legacy single-server mode
+      logger.info(`Initializing single MCP server: ${clientConfig.mcpCommand}`);
+      
+      // Create MCP client
+      this.mcpClient = new MCPStdioClient(
+        clientConfig.mcpCommand,
+        clientConfig.mcpArgs || []
+      );
+      
+      // Start MCP server
+      await this.mcpClient.startMCPServer();
+      
+      // Get tools from MCP server
+      return this.mcpClient.getAvailableTools();
+    } else {
+      throw new RESTifyMCPError('No MCP server configuration provided', 'CONFIG_ERROR');
     }
   }
   
@@ -115,8 +148,14 @@ export default class RESTifyClient {
       }
     }
     
-    // Stop MCP server
-    if (this.mcpClient) {
+    // Stop MCP servers
+    if (this.mcpManager) {
+      try {
+        await this.mcpManager.stopAllServers();
+      } catch (error) {
+        logger.error('Error stopping MCP servers', error as Error);
+      }
+    } else if (this.mcpClient) {
       try {
         await this.mcpClient.stopMCPServer();
       } catch (error) {

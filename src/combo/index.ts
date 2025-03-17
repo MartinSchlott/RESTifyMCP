@@ -5,9 +5,9 @@
  * which combines both server and client in a single process.
  */
 
-import { ValidatedConfig } from '../shared/types.js';
+import { ServerConfig, ValidatedConfig } from '../shared/types.js';
 import { ConsoleLogger, LogLevel, RESTifyMCPError } from '../shared/utils.js';
-import RESTifyServer from '../server/index.js';
+import { RESTifyServer } from '../server/index.js';
 import RESTifyClient from '../client/index.js';
 
 // Set up logger
@@ -20,6 +20,7 @@ export default class RESTifyCombo {
   private readonly config: ValidatedConfig;
   private readonly server: RESTifyServer;
   private readonly client: RESTifyClient;
+  private readonly allowExternalClients: boolean;
   
   /**
    * Create a new RESTifyCombo instance
@@ -36,8 +37,15 @@ export default class RESTifyCombo {
     
     this.config = config;
     
+    // Check if external clients are allowed (default to true)
+    this.allowExternalClients = config.mode === 'combo' && 
+      'allowExternalClients' in config ? 
+      (config.allowExternalClients as boolean) : true;
+    
+    logger.info(`External clients ${this.allowExternalClients ? 'allowed' : 'not allowed'}`);
+    
     // Create server and client instances
-    this.server = new RESTifyServer(config);
+    this.server = new RESTifyServer(config as ValidatedConfig & { server: ServerConfig });
     this.client = new RESTifyClient(config);
     
     logger.info('RESTifyCombo created');
@@ -57,7 +65,7 @@ export default class RESTifyCombo {
       // Wait a moment to ensure server is fully initialized
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Then start client
+      // Then start client and connect to the server
       logger.info('Starting client component...');
       await this.client.start();
       

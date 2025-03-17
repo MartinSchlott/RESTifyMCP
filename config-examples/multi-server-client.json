@@ -1,0 +1,29 @@
+{
+  "mode": "client",
+  "client": {
+    "serverUrl": "http://localhost:3000",
+    "bearerToken": "client-token-123456789012345678901234567890ab",
+    "mcpServers": [
+      {
+        "id": "filesystem",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
+      },
+      {
+        "id": "data-processor",
+        "command": "node",
+        "args": ["./data-processor-mcp.js"]
+      },
+      {
+        "id": "llm-tools",
+        "command": "python",
+        "args": ["llm_tools_mcp.py"],
+        "env": {
+          "OPENAI_API_KEY": "sk-your-api-key",
+          "MODEL_NAME": "gpt-4"
+        },
+        "cwd": "./llm-tools"
+      }
+    ]
+  }
+} 

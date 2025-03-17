@@ -83,13 +83,38 @@ export interface ServerConfig {
 }
 
 /**
+ * MCP Server Configuration
+ */
+export interface MCPServerConfig {
+  // Unique ID for the MCP server (for internal reference only)
+  id: string;
+  
+  // The command to execute
+  command: string;
+  
+  // Arguments for the command
+  args: string[];
+  
+  // Optional environment variables
+  env?: Record<string, string>;
+  
+  // Optional working directory
+  cwd?: string;
+}
+
+/**
  * Client Configuration
  */
 export interface ClientConfig {
   serverUrl: string;
   bearerToken: string;
-  mcpCommand: string;
-  mcpArgs: string[];
+  
+  // For backward compatibility
+  mcpCommand?: string;
+  mcpArgs?: string[];
+  
+  // New field for multi-server support
+  mcpServers?: MCPServerConfig[];
 }
 
 /**
