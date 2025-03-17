@@ -18,7 +18,7 @@ import { AdminService } from './admin-service.js';
 import cookieParser from 'cookie-parser';
 
 // Set up logger
-const logger = new ConsoleLogger('RESTApiService', LogLevel.DEBUG);
+const logger = new ConsoleLogger('RESTApiService', LogLevel.INFO);
 
 /**
  * Interface for handling tool invocations
@@ -604,28 +604,39 @@ export class ExpressRESTApiService implements RESTApiService {
   }
 
   /**
-   * Stop the REST API server
+   * Stop the REST API service
    */
   async stop(): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      // Close all SSE connections first
-      this.closeSseConnections();
-      
-      if (this.server) {
-        this.server.close((error: Error | undefined) => {
-          if (error) {
-            logger.error(`Error stopping server: ${error.message}`, error);
-            reject(error);
+    logger.info('Stopping REST API service');
+    
+    // Close SSE connections
+    this.closeSseConnections();
+    
+    // Close HTTP server
+    if (this.server) {
+      await new Promise<void>((resolve, reject) => {
+        // Set a timeout to force close if it takes too long
+        const timeout = setTimeout(() => {
+          logger.warn('HTTP server close timeout, forcing close');
+          resolve();
+        }, 2000);
+        
+        this.server.close((err?: Error) => {
+          clearTimeout(timeout);
+          if (err) {
+            logger.error(`Error closing HTTP server: ${err.message}`, err);
+            reject(err);
           } else {
-            logger.info('REST API server stopped');
+            logger.info('HTTP server closed');
             resolve();
           }
         });
-      } else {
-        logger.info('REST API server was not running');
-        resolve();
-      }
-    });
+      });
+      
+      this.server = null;
+    }
+    
+    logger.info('REST API service stopped');
   }
 
   /**

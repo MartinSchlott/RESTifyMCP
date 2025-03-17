@@ -20,7 +20,7 @@ import { Server } from 'http';
 import { AuthService } from './auth.js';
 
 // Set up logger
-const logger = new ConsoleLogger('WebSocketServer', LogLevel.DEBUG);
+const logger = new ConsoleLogger('WebSocketServer', LogLevel.INFO);
 
 /**
  * WebSocket Event Emitter interface

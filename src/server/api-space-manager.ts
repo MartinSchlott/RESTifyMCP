@@ -7,7 +7,7 @@ import { APISpace, ClientRegistration } from '../shared/types.js';
 import { ConsoleLogger, LogLevel } from '../shared/utils.js';
 
 // Set up logger
-const logger = new ConsoleLogger('APISpaceManager', LogLevel.DEBUG);
+const logger = new ConsoleLogger('APISpaceManager', LogLevel.INFO);
 
 /**
  * API Space Manager interface

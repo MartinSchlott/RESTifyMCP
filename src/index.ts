@@ -121,8 +121,18 @@ function setupShutdown(): void {
   // Handle various signals
   const signals = ['SIGINT', 'SIGTERM', 'SIGQUIT'];
   
+  let isShuttingDown = false;
+  
   signals.forEach(signal => {
     process.on(signal, async () => {
+      // Prevent multiple shutdown attempts
+      if (isShuttingDown) {
+        logger.warn(`Received another ${signal} during shutdown, forcing exit...`);
+        process.exit(1);
+        return;
+      }
+      
+      isShuttingDown = true;
       logger.info(`Received ${signal}, shutting down gracefully...`);
       
       try {
@@ -135,6 +145,13 @@ function setupShutdown(): void {
         logger.error('Error during graceful shutdown', error as Error);
       } finally {
         logger.info('Exiting process');
+        // Force exit after a timeout to handle any hanging connections
+        setTimeout(() => {
+          logger.warn('Shutdown timeout exceeded, forcing exit');
+          process.exit(1);
+        }, 3000);
+        
+        // Try normal exit first
         process.exit(0);
       }
     });

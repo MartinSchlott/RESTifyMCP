@@ -8,7 +8,7 @@ import { APISpace, ClientRegistration, MCPToolDefinition } from '../shared/types
 import { ConsoleLogger, LogLevel } from '../shared/utils.js';
 
 // Set up logger
-const logger = new ConsoleLogger('OpenAPIGenerator', LogLevel.DEBUG);
+const logger = new ConsoleLogger('OpenAPIGenerator', LogLevel.INFO);
 
 // Type definitions for OpenAPI types
 type OpenAPIObject = {
@@ -349,22 +349,15 @@ export class DefaultOpenApiGenerator implements OpenApiGenerator {
     if (!parameters || Object.keys(parameters).length === 0) {
       return {
         type: 'object',
-        properties: {
-          args: {
-            type: 'object',
-            properties: {},
-            additionalProperties: false
-          }
-        }
+        properties: {},
+        additionalProperties: false
       };
     }
     
     return {
       type: 'object',
-      properties: {
-        args: this.sanitizeSchema(parameters)
-      },
-      required: ['args']
+      properties: this.sanitizeSchema(parameters),
+      required: this.ensureRequiredIsArray(parameters.required)
     };
   }
   

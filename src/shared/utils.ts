@@ -31,6 +31,13 @@ export class ConsoleLogger implements Logger {
   private readonly component: string;
   private currentLogLevel: LogLevel;
   private static logHandler: ((level: LogLevel, component: string, message: string) => void) | null = null;
+  
+  // Rate limiting properties
+  private static messageCount: number = 0;
+  private static lastResetTime: number = Date.now();
+  private static readonly MAX_LOGS_PER_MINUTE: number = 1000; // Maximum logs per minute
+  private static readonly RATE_RESET_INTERVAL: number = 60000; // 1 minute in milliseconds
+  private static isRateLimited: boolean = false;
 
   /**
    * Set a global log handler to capture logs for SSE
@@ -48,6 +55,11 @@ export class ConsoleLogger implements Logger {
   private log(level: LogLevel, message: string, error?: Error): void {
     // Skip if log level is below configured level
     if (this.shouldSkipLog(level)) {
+      return;
+    }
+
+    // Check rate limiting
+    if (this.checkRateLimit(level)) {
       return;
     }
 
@@ -78,6 +90,44 @@ export class ConsoleLogger implements Logger {
     if (ConsoleLogger.logHandler) {
       ConsoleLogger.logHandler(level, this.component, message);
     }
+  }
+  
+  /**
+   * Check if logging should be rate limited
+   * @param level Log level
+   * @returns True if the log should be skipped due to rate limiting
+   */
+  private checkRateLimit(level: LogLevel): boolean {
+    const now = Date.now();
+    
+    // Reset counter if interval has passed
+    if (now - ConsoleLogger.lastResetTime > ConsoleLogger.RATE_RESET_INTERVAL) {
+      ConsoleLogger.messageCount = 0;
+      ConsoleLogger.lastResetTime = now;
+      
+      // If we were rate limited, log that we're resuming
+      if (ConsoleLogger.isRateLimited) {
+        ConsoleLogger.isRateLimited = false;
+        console.warn(`[${new Date().toISOString()}] [WARN] [Logger] Logging resumed after rate limiting`);
+      }
+    }
+    
+    // Increment message count
+    ConsoleLogger.messageCount++;
+    
+    // Check if we've exceeded the limit
+    if (ConsoleLogger.messageCount > ConsoleLogger.MAX_LOGS_PER_MINUTE) {
+      // Only log the rate limiting message once per interval
+      if (!ConsoleLogger.isRateLimited) {
+        ConsoleLogger.isRateLimited = true;
+        console.warn(`[${new Date().toISOString()}] [WARN] [Logger] Log rate limit exceeded (${ConsoleLogger.MAX_LOGS_PER_MINUTE} messages per minute). Some logs will be suppressed.`);
+      }
+      
+      // Always allow ERROR logs through, rate limit others
+      return level !== LogLevel.ERROR;
+    }
+    
+    return false;
   }
   
   private shouldSkipLog(level: LogLevel): boolean {

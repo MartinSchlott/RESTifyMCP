@@ -1,0 +1,583 @@
+openapi: 3.0.0
+info:
+  title: RESTifyMCP API - default
+  version: 2.0.0
+  description: |-
+    Default API Space
+
+    RESTifyMCP provides access to tools registered by connected clients.
+
+    This API Space 'default' provides access to tools from 1 allowed clients.
+servers:
+  - url: http://localhost:3000
+    description: RESTifyMCP Server
+paths:
+  /api/tools/writeFile:
+    post:
+      summary: writeFile
+      description: Create or update a file at the specified path with the given content.
+      operationId: invokeWriteFile
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: object
+                properties:
+                  filePath:
+                    type: string
+                  content:
+                    type: string
+                required:
+                  - filePath
+                  - content
+              required:
+                - filePath
+                - content
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    description: Tool result
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '404':
+          description: Tool not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+  /api/tools/readFileContent:
+    post:
+      summary: readFileContent
+      description: Retrieve the content of a specified file.
+      operationId: invokeReadFileContent
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: object
+                properties:
+                  filePath:
+                    type: string
+                required:
+                  - filePath
+              required:
+                - filePath
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    description: Tool result
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '404':
+          description: Tool not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+  /api/tools/editFile:
+    post:
+      summary: editFile
+      description: >-
+        Make targeted changes to specific text portions within a file without
+        rewriting the entire content.
+      operationId: invokeEditFile
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: object
+                properties:
+                  filePath:
+                    type: string
+                  edits:
+                    type: array
+                  dryRun:
+                    type: boolean
+                    default: false
+                required:
+                  - filePath
+                  - edits
+              required:
+                - filePath
+                - edits
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    description: Tool result
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '404':
+          description: Tool not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+  /api/tools/manageFile:
+    post:
+      summary: manageFile
+      description: Perform actions like move, rename, copy, or delete a file.
+      operationId: invokeManageFile
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: object
+                properties:
+                  action:
+                    type: string
+                    enum:
+                      - move
+                      - rename
+                      - copy
+                      - delete
+                  filePath:
+                    type: string
+                  newFilePath:
+                    type: string
+                required:
+                  - action
+                  - filePath
+              required:
+                - action
+                - filePath
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    description: Tool result
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '404':
+          description: Tool not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+  /api/tools/manageFolder:
+    post:
+      summary: manageFolder
+      description: Perform actions like create, rename, or delete a folder.
+      operationId: invokeManageFolder
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: object
+                properties:
+                  action:
+                    type: string
+                    enum:
+                      - create
+                      - rename
+                      - delete
+                  folderPath:
+                    type: string
+                  newFolderPath:
+                    type: string
+                required:
+                  - action
+                  - folderPath
+              required:
+                - action
+                - folderPath
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    description: Tool result
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '404':
+          description: Tool not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+  /api/tools/searchFilesAndFolders:
+    post:
+      summary: searchFilesAndFolders
+      description: >-
+        Search for matching files and folders using glob patterns. Results
+        always include path and type fields. Use pattern * for top-level
+        listing. Setting includeMetadata to true adds size, created, and
+        modified fields.
+      operationId: invokeSearchFilesAndFolders
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: object
+                properties:
+                  pattern:
+                    type: string
+                  includeMetadata:
+                    type: boolean
+                    default: false
+                  ignore:
+                    type: array
+                  cwd:
+                    type: string
+                required:
+                  - pattern
+              required:
+                - pattern
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    description: Tool result
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '404':
+          description: Tool not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+  /api/tools/readInstruction:
+    post:
+      summary: readInstruction
+      description: Retrieves the full content of a specific instruction by its ID.
+      operationId: invokeReadInstruction
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+              required:
+                - id
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    description: Tool result
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '404':
+          description: Tool not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+  /api/tools/listInstructions:
+    post:
+      summary: listInstructions
+      description: Lists all available instructions with their IDs and summaries.
+      operationId: invokeListInstructions
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: object
+                properties: {}
+              required: []
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    description: Tool result
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '404':
+          description: Tool not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: API authentication token
+security:
+  - bearerAuth: []
