@@ -118,6 +118,12 @@ export default class RESTifyClient {
   private async initializeMCPServers(clientConfig: ClientConfig): Promise<MCPToolDefinition[]> {
     const allTools: MCPToolDefinition[] = [];
     
+    logger.debug(`Client config: ${JSON.stringify({
+      mcpServers: clientConfig.mcpServers?.length || 0,
+      openApiServers: clientConfig.openApiServers?.length || 0,
+      hasOpenApiServers: !!clientConfig.openApiServers
+    })}`);
+    
     // Initialize MCP servers
     if (clientConfig.mcpServers && clientConfig.mcpServers.length > 0) {
       logger.info(`Initializing ${clientConfig.mcpServers.length} MCP servers`);
@@ -146,13 +152,21 @@ export default class RESTifyClient {
     // Initialize OpenAPI servers
     if (clientConfig.openApiServers && clientConfig.openApiServers.length > 0) {
       logger.info(`Initializing ${clientConfig.openApiServers.length} OpenAPI servers`);
+      logger.debug(`OpenAPI server configs: ${JSON.stringify(clientConfig.openApiServers)}`);
       
-      this.openApiManager = new OpenAPIServerManager(clientConfig.openApiServers);
-      await this.openApiManager.initialize();
-      
-      const openApiTools = this.openApiManager.getAllTools();
-      allTools.push(...openApiTools);
-      logger.info(`Discovered ${openApiTools.length} tools from OpenAPI servers`);
+      try {
+        this.openApiManager = new OpenAPIServerManager(clientConfig.openApiServers);
+        await this.openApiManager.initialize();
+        
+        const openApiTools = this.openApiManager.getAllTools();
+        allTools.push(...openApiTools);
+        logger.info(`Discovered ${openApiTools.length} tools from OpenAPI servers`);
+      } catch (error) {
+        logger.error('Failed to initialize OpenAPI servers', error as Error);
+        // Continue with other servers even if OpenAPI fails
+      }
+    } else {
+      logger.debug('No OpenAPI servers configured');
     }
     
     return allTools;

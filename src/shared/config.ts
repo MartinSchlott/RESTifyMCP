@@ -50,13 +50,21 @@ const mcpServerConfigSchema = z.object({
   cwd: z.string().optional()
 });
 
-// Zod schema for client configuration - updated to support multi-server
+// Zod schema for OpenAPI Server configuration
+const openApiServerConfigSchema = z.object({
+  id: z.string().min(1),
+  openApiUrl: z.string().url(),
+  bearerToken: z.string().optional()
+});
+
+// Zod schema for client configuration - updated to support multi-server and OpenAPI
 const clientConfigSchema = z.object({
   serverUrl: z.string().url(),
   bearerToken: z.string().min(32),
   mcpCommand: z.string().optional(),
   mcpArgs: z.array(z.string()).optional().default([]),
-  mcpServers: z.array(mcpServerConfigSchema).optional()
+  mcpServers: z.array(mcpServerConfigSchema).optional(),
+  openApiServers: z.array(openApiServerConfigSchema).optional()
 }).refine(
   (data) => {
     // Either mcpCommand or mcpServers must be provided
