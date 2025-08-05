@@ -103,6 +103,20 @@ export interface MCPServerConfig {
 }
 
 /**
+ * OpenAPI Server Configuration
+ */
+export interface OpenAPIServerConfig {
+  // Unique ID for the OpenAPI server (for internal reference only)
+  id: string;
+  
+  // URL to the OpenAPI specification
+  openApiUrl: string;
+  
+  // Optional bearer token for authentication
+  bearerToken?: string;
+}
+
+/**
  * Client Configuration
  */
 export interface ClientConfig {
@@ -115,6 +129,9 @@ export interface ClientConfig {
   
   // New field for multi-server support
   mcpServers?: MCPServerConfig[];
+  
+  // New field for OpenAPI server support
+  openApiServers?: OpenAPIServerConfig[];
 }
 
 /**

@@ -1,152 +1,244 @@
 # OpenAPI Integration for RESTifyMCP Client
 
-## Problem Statement
+## Overview
 
-The RESTifyMCP client currently only supports MCP servers via stdio communication. Users need to expose external REST APIs as MCP tools to bridge the gap between REST-based services and MCP-compatible tools.
+RESTifyMCP now supports integrating external REST APIs via OpenAPI specifications. This allows you to expose REST API endpoints as MCP tools, making them available through the RESTifyMCP bridge.
 
-## Core Requirements
+## Features
 
-### Functional Requirements
-1. **OpenAPI Discovery**: Fetch OpenAPI specification from configured URLs at startup
-2. **Tool Generation**: Convert OpenAPI endpoints to MCP tool definitions
-3. **HTTP Proxy**: Route MCP tool calls to appropriate REST API endpoints
-4. **Multi-Server Support**: Support multiple OpenAPI servers per client configuration
-5. **Graceful Degradation**: Continue operation if OpenAPI fetch fails for specific servers
+- **OpenAPI Specification Parsing**: Automatically fetches and parses OpenAPI specifications
+- **POST-Only Support**: Only POST endpoints are converted to tools (simplified approach)
+- **JSON Body Parameters**: Only `application/json` request bodies are supported
+- **Bearer Token Authentication**: Optional authentication for both OpenAPI fetching and API calls
+- **Error Handling**: Graceful degradation when OpenAPI servers are unavailable
+- **Complex Schema Filtering**: Automatically skips endpoints with complex schemas (oneOf, allOf, anyOf)
 
-### Technical Constraints
-- **Authentication**: One bearer token per OpenAPI server (not per endpoint)
-- **Parameter Mapping**: Direct OpenAPI schema → MCP parameter conversion
-- **Response Handling**: Return complete HTTP response body, approximate status mapping
-- **Caching**: One-time fetch at startup, no retry mechanism
-- **Error Handling**: Log errors but continue with other servers
+## Configuration
 
-## Architectural Approach
+### OpenAPI Server Configuration
 
-### Integration Strategy
+Add `openApiServers` to your client configuration:
 
-The OpenAPI servers will be integrated as **additional server types** in the existing `MCPManager` architecture. This maintains the current pattern where multiple "servers" can be managed simultaneously.
-
-**Why this approach**: The existing `MCPManager` already handles multiple server types and provides the tool routing infrastructure. Adding OpenAPI servers as a new server type preserves architectural consistency.
-
-### Data Flow Architecture
-
-```
-OpenAPI Config → OpenAPIServerManager → MCPToolDefinition[] → MCPManager → WebSocket Registration
-```
-
-**Key architectural decisions**:
-- OpenAPI servers are treated as "virtual MCP servers" 
-- Tool requests route through existing `MCPManager.callTool()` infrastructure
-- WebSocket communication remains unchanged
-
-### Component Responsibilities
-
-#### OpenAPIServerManager
-- **Fetches** OpenAPI specifications with bearer token authentication
-- **Parses** OpenAPI schema and converts to `MCPToolDefinition[]`
-- **Implements** `callTool()` interface for HTTP request routing
-- **Handles** parameter mapping and response processing
-
-#### MCPManager Integration
-- **Registers** OpenAPI servers alongside MCP stdio servers
-- **Routes** tool calls to appropriate server type
-- **Maintains** existing tool provider mapping
-
-## Implementation Constraints
-
-### OpenAPI Parsing Rules
-- **Filter**: Exclude all `/openapi*` endpoints from tool generation
-- **Naming**: Use `operationId` if present, otherwise last path segment
-- **Parameters**: Direct schema conversion with JSON Schema → MCP parameter mapping
-
-### HTTP Request Handling
-- **Method Mapping**: All MCP tools use POST, map to appropriate HTTP method
-- **Parameter Distribution**: Body parameters → request body, query parameters → URL params
-- **Authentication**: Bearer token from config for all requests to that server
-
-### Error Handling Philosophy
-- **OpenAPI Fetch Failures**: Log error, mark server as failed, continue with others
-- **HTTP Request Failures**: Return error response through MCP tool response mechanism
-- **No Retry Logic**: User must restart client for OpenAPI configuration changes
-
-## Configuration Schema
-
-```typescript
-interface OpenAPIServerConfig {
-  id: string;                    // Unique identifier for this OpenAPI server
-  openApiUrl: string;            // URL to fetch OpenAPI specification
-  bearerToken?: string;          // Authentication token for this server
-  baseUrl?: string;              // Optional base URL if different from openApiUrl
+```json
+{
+  "mode": "client",
+  "client": {
+    "serverUrl": "http://localhost:3000",
+    "bearerToken": "client-token-1",
+    "mcpServers": [
+      {
+        "id": "filesystem",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"]
+      }
+    ],
+    "openApiServers": [
+      {
+        "id": "petstore",
+        "openApiUrl": "https://petstore3.swagger.io/api/v3/openapi.json"
+      },
+      {
+        "id": "weather",
+        "openApiUrl": "https://api.openweathermap.org/data/2.5/openapi.json",
+        "bearerToken": "your-weather-api-key"
+      }
+    ]
+  }
 }
 ```
 
-**Configuration integration**: Add `openApiServers?: OpenAPIServerConfig[]` to existing `ClientConfig`
+### Configuration Fields
 
-## Technical Implementation Plan
+- **id**: Unique identifier for the OpenAPI server
+- **openApiUrl**: URL to the OpenAPI specification (JSON format)
+- **bearerToken**: Optional bearer token for authentication (used for both fetching OpenAPI spec and API calls)
 
-### Phase 1: Core Infrastructure
-1. **Extend types.ts**: Add `OpenAPIServerConfig` and related interfaces
-2. **Create OpenAPIServerManager**: Implement OpenAPI fetching and parsing
-3. **HTTP client integration**: Add request routing capabilities
+## How It Works
 
-### Phase 2: MCPManager Integration  
-1. **Extend MCPManager**: Add support for OpenAPI server type
-2. **Tool registration**: Integrate OpenAPI tools into existing registration flow
-3. **Error handling**: Implement graceful degradation for failed OpenAPI servers
+### 1. OpenAPI Parsing
 
-### Phase 3: Parameter Mapping
-1. **Schema conversion**: Implement OpenAPI schema → MCP parameter conversion
-2. **Request routing**: Map MCP tool calls to appropriate HTTP requests
-3. **Response processing**: Handle HTTP responses and convert to MCP format
+When the client starts:
 
-## Critical Design Decisions
+1. Fetches OpenAPI specification from the provided URL
+2. Filters for POST endpoints only
+3. Checks for `application/json` request body
+4. Skips endpoints with complex schemas (oneOf, allOf, anyOf)
+5. Converts OpenAPI schemas to MCP tool parameters
+6. Generates tool names from `operationId` or path segments
 
-### Why OpenAPI as Virtual MCP Servers
-The existing `MCPManager` architecture already handles multiple server types and provides tool routing. Adding OpenAPI servers as a new server type preserves this pattern and avoids architectural inconsistency.
+### 2. Tool Name Generation
 
-### Why No Retry Mechanism
-OpenAPI specifications are configuration, not runtime data. If the specification changes, the user should restart the client to pick up new endpoints. This prevents complex state management and keeps the system predictable.
+- **Primary**: Uses `operationId` from OpenAPI specification
+- **Fallback**: Uses the last segment of the path (e.g., `/api/users` → `users`)
 
-### Why Direct Parameter Mapping
-OpenAPI JSON Schema and MCP parameters are structurally compatible. Direct mapping preserves the original API contract while enabling MCP tool integration.
+### 3. Parameter Conversion
 
-## Integration Points
+OpenAPI schemas are converted to MCP-compatible parameters:
 
-### Existing Components to Extend
-- **types.ts**: Add OpenAPI configuration interfaces
-- **mcp-manager.ts**: Add OpenAPI server support alongside stdio servers  
-- **client/index.ts**: Initialize OpenAPI servers during startup
+```json
+// OpenAPI Schema
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "User name"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    }
+  },
+  "required": ["name"]
+}
 
-### New Components to Create
-- **openapi-server-manager.ts**: OpenAPI fetching, parsing, and HTTP routing
-- **openapi-parser.ts**: Schema conversion utilities
-- **http-client.ts**: HTTP request handling for OpenAPI endpoints
+// MCP Tool Parameters
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "User name"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    }
+  },
+  "required": ["name"]
+}
+```
 
-## Success Criteria
+### 4. Tool Invocation
 
-1. **Functional**: OpenAPI endpoints appear as MCP tools in RESTifyMCP API
-2. **Reliable**: Failed OpenAPI servers don't prevent other servers from working
-3. **Consistent**: OpenAPI tools follow same patterns as MCP stdio tools
-4. **Maintainable**: Implementation follows existing architectural patterns
+When a tool is called:
 
-## Risk Mitigation
+1. Determines which OpenAPI server provides the tool
+2. Reconstructs the original path from stored metadata
+3. Makes HTTP POST request to the REST API
+4. Returns the complete response body
+5. Handles errors by returning error response object
 
-### OpenAPI Specification Changes
-**Risk**: OpenAPI spec changes require client restart
-**Mitigation**: Clear documentation that OpenAPI config is static
+## Error Handling
 
-### HTTP Method Mapping Complexity  
-**Risk**: MCP tools are POST-only, but OpenAPI supports multiple methods
-**Mitigation**: Use HTTP method from OpenAPI spec, default to POST
+### OpenAPI Fetch Errors
 
-### Parameter Type Mismatches
-**Risk**: Complex OpenAPI schemas may not map cleanly to MCP parameters
-**Mitigation**: Start with simple schemas, add complexity incrementally
+If fetching the OpenAPI specification fails:
+- Error is logged
+- Server status is set to 'error'
+- Client continues with other servers
+- No retry attempts (user must restart client)
 
-## Implementation Priority
+### API Call Errors
 
-1. **Core OpenAPI fetching and parsing** (highest priority)
-2. **Basic HTTP request routing** (highest priority)  
-3. **Parameter mapping and schema conversion** (medium priority)
-4. **Advanced error handling and edge cases** (lower priority)
-5. **Performance optimizations and caching** (future enhancement)
+HTTP errors (4xx, 5xx) are returned as error response objects:
+
+```json
+{
+  "error": true,
+  "status": 400,
+  "statusText": "Bad Request",
+  "data": {
+    "message": "Invalid input"
+  }
+}
+```
+
+## Limitations
+
+### Current Limitations (MVP)
+
+1. **POST-Only**: Only POST endpoints are supported
+2. **JSON Body Only**: Only `application/json` request bodies
+3. **No Query/Path Parameters**: Only request body parameters
+4. **No Complex Schemas**: Skips oneOf, allOf, anyOf schemas
+5. **No Caching**: OpenAPI spec is fetched once at startup
+6. **Simple Path Reconstruction**: Assumes tool name matches path segment
+
+### Future Enhancements
+
+1. **GET Support**: Add support for GET endpoints
+2. **Query Parameters**: Support for query and path parameters
+3. **Complex Schemas**: Handle oneOf, allOf, anyOf schemas
+4. **Caching**: Cache OpenAPI specifications with TTL
+5. **Better Path Mapping**: More sophisticated path reconstruction
+6. **Response Schema**: Use OpenAPI response schemas for validation
+
+## Example Usage
+
+### Petstore API Integration
+
+```json
+{
+  "id": "petstore",
+  "openApiUrl": "https://petstore3.swagger.io/api/v3/openapi.json"
+}
+```
+
+This will create tools like:
+- `addPet` (from operationId)
+- `updatePet` (from operationId)
+- `findPetsByStatus` (from operationId)
+
+### Weather API Integration
+
+```json
+{
+  "id": "weather",
+  "openApiUrl": "https://api.openweathermap.org/data/2.5/openapi.json",
+  "bearerToken": "your-api-key"
+}
+```
+
+## Logging
+
+The OpenAPI integration provides detailed logging:
+
+- **Info**: Server initialization and tool discovery
+- **Debug**: Skipped endpoints and tool creation
+- **Warn**: Schema issues (e.g., unresolved $ref)
+- **Error**: Fetch failures and API call errors
+
+## Security Considerations
+
+1. **Bearer Tokens**: Store securely, not in version control
+2. **HTTPS**: Use HTTPS URLs for production APIs
+3. **API Keys**: Rotate API keys regularly
+4. **Access Control**: Use API Space tokens to control access
+
+## Troubleshooting
+
+### Common Issues
+
+1. **OpenAPI Fetch Fails**
+   - Check URL accessibility
+   - Verify bearer token (if required)
+   - Check network connectivity
+
+2. **No Tools Discovered**
+   - Verify API has POST endpoints
+   - Check for `application/json` request bodies
+   - Look for complex schemas in logs
+
+3. **Tool Calls Fail**
+   - Verify bearer token for API calls
+   - Check API endpoint availability
+   - Review request/response format
+
+### Debug Mode
+
+Enable debug logging to see detailed information:
+
+```typescript
+const logger = new ConsoleLogger('OpenAPIServerManager', LogLevel.DEBUG);
+```
+
+## Integration with Existing Features
+
+The OpenAPI integration works seamlessly with existing RESTifyMCP features:
+
+- **Multi-Server Support**: Mix MCP and OpenAPI servers
+- **Combo Mode**: Use both server and client modes
+- **API Spaces**: Control access through bearer tokens
+- **WebSocket Communication**: Real-time tool registration
+- **OpenAPI Generation**: Tools appear in generated documentation
