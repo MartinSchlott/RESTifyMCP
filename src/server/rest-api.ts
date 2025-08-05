@@ -714,11 +714,19 @@ export class ExpressRESTApiService implements RESTApiService {
    * @returns Tool arguments
    */
   private extractArguments(req: Request): Record<string, unknown> {
+    // Debug logging for CustomGPT requests
+    logger.debug(`Request headers: ${JSON.stringify(req.headers)}`);
+    logger.debug(`Request body: ${JSON.stringify(req.body)}`);
+    logger.debug(`Request query: ${JSON.stringify(req.query)}`);
+    logger.debug(`Content-Type: ${req.get('Content-Type')}`);
+    
     // Combine body and query parameters
     const args: Record<string, unknown> = {
       ...req.query,
       ...req.body
     };
+    
+    logger.debug(`Extracted arguments: ${JSON.stringify(args)}`);
     
     return args;
   }
