@@ -472,11 +472,12 @@ export class WSServer implements WSServerInterface, ToolInvoker, WebSocketEventE
         this.disconnectClient(existingClient.connectionId!);
       }
       
-      // Create or update client registration
+      // Always update client registration with new tools (even on reconnect)
+      // This ensures that if the source OpenAPI spec has changed, the new tools are used
       const registration: ClientRegistration = {
         clientId,
         bearerToken,
-        tools: payload.tools,
+        tools: payload.tools, // Always use the new tools from the client
         connectionStatus: 'connected',
         lastSeen: new Date(),
         connectionId
@@ -488,7 +489,12 @@ export class WSServer implements WSServerInterface, ToolInvoker, WebSocketEventE
       // Store connection ID to client ID mapping
       this.clientConnections.set(connectionId, ws);
       
-      logger.info(`Client registered: ${clientId} with ${payload.tools.length} tools`);
+      // Log whether this is a new registration or an update
+      if (existingClient) {
+        logger.info(`Client reconnected: ${clientId} with ${payload.tools.length} tools (updated from previous ${existingClient.tools.length} tools)`);
+      } else {
+        logger.info(`Client registered: ${clientId} with ${payload.tools.length} tools`);
+      }
       
       // Notify listeners about new client connection
       this.emitClientConnect(clientId);

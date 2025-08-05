@@ -59,6 +59,78 @@ The V01, V02, and V03 versions were developed with AI assistance:
 - ~20 minutes: Code implementation by AI coders
 - ~3 hour: Debugging and quality assurance because the coder AI thought it is a good idea to touch the whole code unecessary
 
+## V04 Release: OpenAPI Server Integration
+
+Version 1.1.0 introduces **OpenAPI Server Integration**, allowing RESTifyMCP clients to expose local REST API servers as MCP tools. This enables seamless integration of existing REST APIs with MCP-based workflows.
+
+### Key New Features
+
+1. **OpenAPI Server Integration**: Clients can now connect to local REST API servers and expose their endpoints as MCP tools
+2. **Dynamic Tool Discovery**: Automatically fetches OpenAPI specifications and converts endpoints to MCP tools
+3. **Bearer Token Authentication**: Support for authenticated OpenAPI server access
+4. **CustomGPT Compatibility**: Proper handling of OpenAPI schemas with `additionalProperties` for full CustomGPT compatibility
+5. **Error Resilience**: Graceful handling of OpenAPI fetch failures without affecting other MCP servers
+
+### OpenAPI Server Integration
+
+RESTifyMCP clients can now connect to local REST API servers and expose their endpoints as MCP tools:
+
+- **Automatic Discovery**: Fetches OpenAPI specifications at startup
+- **Tool Conversion**: Converts POST endpoints with JSON request bodies to MCP tools
+- **Schema Preservation**: Maintains OpenAPI schema compatibility for CustomGPT integration
+- **Error Handling**: Continues operation even if OpenAPI servers are unavailable
+
+Example client configuration with OpenAPI servers:
+
+```json
+{
+  "mode": "client",
+  "client": {
+    "serverUrl": "http://localhost:3000",
+    "bearerToken": "client-token-1",
+    "mcpServers": [
+      {
+        "id": "filesystem",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"]
+      }
+    ],
+    "openApiServers": [
+      {
+        "id": "assembly",
+        "openApiUrl": "http://localhost:3003/assembly/openapi",
+        "bearerToken": "optional-auth-token"
+      },
+      {
+        "id": "weather-api",
+        "openApiUrl": "https://api.weatherapi.com/v1/swagger.json"
+      }
+    ]
+  }
+}
+```
+
+### OpenAPI Integration Features
+
+**Supported Endpoints:**
+- Only **POST** methods are converted to MCP tools
+- Only **application/json** request bodies are supported
+- Complex schemas (oneOf, allOf, anyOf) are automatically filtered out
+
+**Tool Naming:**
+- Uses `operationId` if available
+- Falls back to the last path segment (e.g., `/api/users/create` → `create`)
+
+**Schema Compatibility:**
+- Preserves `additionalProperties` for CustomGPT compatibility
+- Maintains `properties` structure for proper parameter validation
+- Handles nested objects correctly
+
+**Error Handling:**
+- Graceful degradation if OpenAPI servers are unavailable
+- Continues operation with remaining MCP servers
+- Comprehensive logging for debugging
+
 ## V03 Release: Enhanced Client and Combo Mode
 
 Version 3.0 introduces two major improvements to RESTifyMCP:
@@ -217,7 +289,7 @@ In server mode, RESTifyMCP starts an HTTP server that provides a REST API. Clien
 
 #### Client Mode
 
-In client mode, RESTifyMCP starts one or more MCP servers via stdio and connects to a RESTify server to register their tools.
+In client mode, RESTifyMCP starts one or more MCP servers via stdio and connects to a RESTify server to register their tools. It can also connect to OpenAPI servers to expose their endpoints as MCP tools.
 
 ```json
 {
@@ -230,6 +302,13 @@ In client mode, RESTifyMCP starts one or more MCP servers via stdio and connects
         "id": "main",
         "command": "node",
         "args": ["./path/to/mcp-server.js"]
+      }
+    ],
+    "openApiServers": [
+      {
+        "id": "assembly",
+        "openApiUrl": "http://localhost:3003/assembly/openapi",
+        "bearerToken": "optional-auth-token"
       }
     ]
   }
@@ -275,6 +354,70 @@ In combo mode, RESTifyMCP runs both server and client in a single process, with 
   "allowExternalClients": true
 }
 ```
+
+### Example: Multiple MCP Server Configuration
+
+Here's an example configuration for using RESTifyMCP with multiple MCP servers:
+
+### Example: OpenAPI Server Integration
+
+Here's an example configuration that combines MCP servers with OpenAPI servers:
+
+```json
+{
+  "mode": "combo",
+  "server": {
+    "http": {
+      "port": 3000,
+      "host": "localhost",
+      "publicUrl": "http://example.com"
+    },
+    "apiSpaces": [
+      {
+        "name": "default",
+        "description": "Default API Space",
+        "bearerToken": "your-secure-token-here",
+        "allowedClientTokens": ["client-token"]
+      }
+    ],
+    "admin": {
+      "adminToken": "secure-admin-token"
+    }
+  },
+  "client": {
+    "serverUrl": "http://localhost:3000",
+    "bearerToken": "client-token",
+    "mcpServers": [
+      {
+        "id": "filesystem",
+        "command": "npx",
+        "args": [
+          "-y", 
+          "@modelcontextprotocol/server-filesystem", 
+          "/path/to/allowed/directory1"
+        ]
+      }
+    ],
+    "openApiServers": [
+      {
+        "id": "assembly",
+        "openApiUrl": "http://localhost:3003/assembly/openapi",
+        "bearerToken": "assembly-auth-token"
+      },
+      {
+        "id": "weather-api",
+        "openApiUrl": "https://api.weatherapi.com/v1/swagger.json"
+      }
+    ]
+  },
+  "allowExternalClients": true
+}
+```
+
+This configuration exposes:
+- **MCP Tools**: From the filesystem server
+- **OpenAPI Tools**: From the Assembly API and Weather API
+- **Combined Interface**: All tools available through a single REST API
 
 ### Example: Multiple MCP Server Configuration
 

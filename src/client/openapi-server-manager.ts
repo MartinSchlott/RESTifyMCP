@@ -254,14 +254,11 @@ export class OpenAPIServerManager implements OpenAPIServerManagerInterface {
       // Generate tool name
       const toolName = postOperation.operationId || this.generateToolNameFromPath(path);
       
-      // Convert schema to MCP parameters
-      const parameters = this.convertSchemaToMCPParameters(schema);
-      
-      // Create tool definition
+      // Create tool definition - use schema 1:1 like MCP servers
       const tool: OpenAPIToolDefinition = {
         name: toolName,
         description: postOperation.description || postOperation.summary || `POST ${path}`,
-        parameters: parameters,
+        parameters: schema, // 1:1 transfer like MCP servers
         path: path // Store the path
       };
       
@@ -320,46 +317,6 @@ export class OpenAPIServerManager implements OpenAPIServerManagerInterface {
     return 'default';
   }
   
-  /**
-   * Convert OpenAPI schema to MCP parameters
-   */
-  private convertSchemaToMCPParameters(schema: any): Record<string, unknown> {
-    if (!schema || typeof schema !== 'object') {
-      return {};
-    }
-    
-    // Handle $ref (should be resolved by the OpenAPI spec)
-    if (schema.$ref) {
-      logger.warn(`Found $ref in schema, this should be resolved: ${schema.$ref}`);
-      return {};
-    }
-    
-    // Handle object type
-    if (schema.type === 'object' && schema.properties) {
-      const properties: Record<string, unknown> = {};
-      
-      for (const [propName, propSchema] of Object.entries(schema.properties)) {
-        properties[propName] = this.convertSchemaProperty(propSchema as any);
-      }
-      
-      return {
-        type: 'object',
-        properties: properties,
-        required: schema.required || []
-      };
-    }
-    
-    // Handle array type
-    if (schema.type === 'array' && schema.items) {
-      return {
-        type: 'array',
-        items: this.convertSchemaProperty(schema.items)
-      };
-    }
-    
-    // Handle primitive types
-    return this.convertSchemaProperty(schema);
-  }
   
   /**
    * Convert a single schema property
@@ -490,6 +447,15 @@ export class OpenAPIServerManager implements OpenAPIServerManagerInterface {
       headers['Authorization'] = `Bearer ${config.bearerToken}`;
     }
     
+    logger.info(`=== OPENAPI TOOL CALL ===`);
+    logger.info(`URL: ${url}`);
+    logger.info(`Path: ${path}`);
+    logger.info(`Headers: ${JSON.stringify(headers)}`);
+    logger.info(`Args: ${JSON.stringify(args)}`);
+    logger.info(`Args type: ${typeof args}`);
+    logger.info(`Args keys: ${Object.keys(args).join(', ')}`);
+    logger.info(`=== END OPENAPI TOOL CALL ===`);
+    
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -507,6 +473,14 @@ export class OpenAPIServerManager implements OpenAPIServerManagerInterface {
         responseData = responseText;
       }
       
+      logger.info(`=== OPENAPI RESPONSE ===`);
+      logger.info(`Status: ${response.status}`);
+      logger.info(`Status Text: ${response.statusText}`);
+      logger.info(`Response Headers: ${JSON.stringify(Object.fromEntries(response.headers.entries()))}`);
+      logger.info(`Response Text: ${responseText}`);
+      logger.info(`Response Data: ${JSON.stringify(responseData)}`);
+      logger.info(`=== END OPENAPI RESPONSE ===`);
+      
       if (response.ok) {
         return responseData;
       } else {
@@ -519,6 +493,12 @@ export class OpenAPIServerManager implements OpenAPIServerManagerInterface {
         };
       }
     } catch (error) {
+      logger.error(`=== OPENAPI ERROR ===`);
+      logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      logger.error(`Error type: ${typeof error}`);
+      logger.error(`Error details: ${JSON.stringify(error)}`);
+      logger.error(`=== END OPENAPI ERROR ===`);
+      
       throw new RESTifyMCPError(
         `Failed to call OpenAPI tool ${path}: ${error instanceof Error ? error.message : 'Unknown error'}`,
         'OPENAPI_CALL_ERROR'

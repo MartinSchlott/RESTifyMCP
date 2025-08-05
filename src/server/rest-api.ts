@@ -491,6 +491,16 @@ export class ExpressRESTApiService implements RESTApiService {
     
     try {
       logger.info(`Tool request received for ${toolName}`);
+      logger.info(`=== REQUEST DETAILS ===`);
+      logger.info(`Method: ${req.method}`);
+      logger.info(`URL: ${req.url}`);
+      logger.info(`Path: ${req.path}`);
+      logger.info(`Headers: ${JSON.stringify(req.headers)}`);
+      logger.info(`Body: ${JSON.stringify(req.body)}`);
+      logger.info(`Query: ${JSON.stringify(req.query)}`);
+      logger.info(`Content-Type: ${req.get('Content-Type')}`);
+      logger.info(`User-Agent: ${req.get('User-Agent')}`);
+      logger.info(`=== END REQUEST DETAILS ===`);
       
       // Get API Space from bearer token
       const apiSpace = this.authService.getRequestAPISpace(req);
@@ -515,9 +525,14 @@ export class ExpressRESTApiService implements RESTApiService {
       
       // Get tool arguments from body or query parameters
       const args = this.extractArguments(req);
+      logger.info(`=== EXTRACTED ARGUMENTS ===`);
+      logger.info(`Arguments: ${JSON.stringify(args)}`);
+      logger.info(`Arguments type: ${typeof args}`);
+      logger.info(`Arguments keys: ${Object.keys(args).join(', ')}`);
+      logger.info(`=== END EXTRACTED ARGUMENTS ===`);
       
       // Call the tool on the client
-      logger.debug(`Invoking tool ${toolName} on client ${clientId}`);
+      logger.info(`Invoking tool ${toolName} on client ${clientId} with args: ${JSON.stringify(args)}`);
       const result = await this.toolInvoker.invokeToolOnClient(clientId, toolName, args);
       
       // Return the result
@@ -525,9 +540,11 @@ export class ExpressRESTApiService implements RESTApiService {
         result
       };
       
+      logger.info(`Tool ${toolName} completed successfully`);
       res.json(response);
     } catch (error) {
       logger.error(`Error handling tool request for ${toolName}`, error as Error);
+      logger.error(`Error details: ${JSON.stringify(error)}`);
       
       if (error instanceof RESTifyMCPError) {
         res.status(500).json({
@@ -715,10 +732,10 @@ export class ExpressRESTApiService implements RESTApiService {
    */
   private extractArguments(req: Request): Record<string, unknown> {
     // Debug logging for CustomGPT requests
-    logger.debug(`Request headers: ${JSON.stringify(req.headers)}`);
-    logger.debug(`Request body: ${JSON.stringify(req.body)}`);
-    logger.debug(`Request query: ${JSON.stringify(req.query)}`);
-    logger.debug(`Content-Type: ${req.get('Content-Type')}`);
+    logger.info(`Request headers: ${JSON.stringify(req.headers)}`);
+    logger.info(`Request body: ${JSON.stringify(req.body)}`);
+    logger.info(`Request query: ${JSON.stringify(req.query)}`);
+    logger.info(`Content-Type: ${req.get('Content-Type')}`);
     
     // Combine body and query parameters
     const args: Record<string, unknown> = {
@@ -726,7 +743,7 @@ export class ExpressRESTApiService implements RESTApiService {
       ...req.body
     };
     
-    logger.debug(`Extracted arguments: ${JSON.stringify(args)}`);
+    logger.info(`Extracted arguments: ${JSON.stringify(args)}`);
     
     return args;
   }

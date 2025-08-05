@@ -1,6 +1,6 @@
 {
   "name": "restifymcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "A tool that makes MCP (Model Context Protocol) servers available as REST APIs",
   "main": "dist/index.js",
