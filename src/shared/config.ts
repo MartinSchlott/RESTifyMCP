@@ -67,12 +67,14 @@ const clientConfigSchema = z.object({
   openApiServers: z.array(openApiServerConfigSchema).optional()
 }).refine(
   (data) => {
-    // Either mcpCommand or mcpServers must be provided
-    return (data.mcpCommand !== undefined) || (data.mcpServers !== undefined && data.mcpServers.length > 0);
+    // Either mcpCommand, mcpServers, or openApiServers must be provided
+    return (data.mcpCommand !== undefined) || 
+           (data.mcpServers !== undefined && data.mcpServers.length > 0) ||
+           (data.openApiServers !== undefined && data.openApiServers.length > 0);
   },
   {
-    message: "Either mcpCommand or mcpServers must be provided",
-    path: ["mcpCommand", "mcpServers"],
+    message: "Either mcpCommand, mcpServers, or openApiServers must be provided",
+    path: ["mcpCommand", "mcpServers", "openApiServers"],
   }
 );
 
